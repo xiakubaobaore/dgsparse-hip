@@ -1,4 +1,3 @@
-
 from typing import Optional
 
 import torch
@@ -57,9 +56,9 @@ class Storage(object):
             assert values.size(0) == self.nnz
             values = values.contiguous()
         else:
-            values = torch.ones(
-                (self.nnz), dtype=torch.float, device=col.device
-            )
+            values = torch.ones((self.nnz),
+                                dtype=torch.float,
+                                device=col.device)
             values = values.contiguous()
 
         if colptr is not None:

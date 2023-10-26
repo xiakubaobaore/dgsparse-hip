@@ -1,4 +1,3 @@
-
 import torch
 from typing import Optional
 
@@ -20,12 +19,10 @@ class SparseTensor(object):
         self.has_value = has_value
 
     @classmethod
-    def from_torch_sparse_csr_tensor(
-        self, 
-        mat: torch.Tensor, 
-        has_value: bool=True,
-        requires_grad: bool = False
-    ):
+    def from_torch_sparse_csr_tensor(self,
+                                     mat: torch.Tensor,
+                                     has_value: bool = True,
+                                     requires_grad: bool = False):
         if has_value:
             values = mat.values()
             if requires_grad:
@@ -36,8 +33,6 @@ class SparseTensor(object):
             row=None,
             rowptr=mat.crow_indices(),
             col=mat.col_indices(),
-            values = values,
+            values=values,
             has_value=has_value,
         )
-
-
