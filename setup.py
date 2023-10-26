@@ -6,7 +6,8 @@ from itertools import product
 import torch
 from setuptools import find_packages, setup
 from torch.utils.cpp_extension import (
-    CUDA_HOME,
+    HIP_HOME,
+    IS_HIP_EXTENSION,
     BuildExtension,
     CUDAExtension,
 )
@@ -14,14 +15,11 @@ from torch.utils.cpp_extension import (
 __version__ = '0.1.1'
 URL = 'https://github.com/dgSPARSE/dgSPARSE-Lib'
 
-WITH_CUDA = False
-if torch.cuda.is_available():
-    WITH_CUDA = CUDA_HOME is not None
-suffices = ['cuda'] if WITH_CUDA else ['cpu']
-if os.getenv('FORCE_CUDA', '0') == '1':
-    suffices = ['cuda']
-print(f'Building with CUDA: {WITH_CUDA}, ', 'CUDA_HOME:', CUDA_HOME)
-
+WITH_HIP = False
+if IS_HIP_EXTENSION:
+    WITH_HIP = HIP_HOME is not None
+suffices = ['hip'] if WITH_HIP else ['cpu']
+print(f'Building with HIP: {WITH_HIP}, ', 'HIP_HOME:', HIP_HOME)
 
 def get_extensions():
     extensions = []
@@ -39,24 +37,22 @@ def get_extensions():
             '-lm',
             '-ldl',
         ]
-        extra_link_args += ['-lcusparse'] if suffix == 'cuda' else []
+        # extra_link_args += ['-lcusparse'] if suffix == 'cuda' else []
 
-        if suffix == 'cuda':
-            define_macros += [('WITH_CUDA', None)]
-            nvcc_flags = os.getenv('NVCC_FLAGS', '')
-            nvcc_flags = [] if nvcc_flags == '' else nvcc_flags.split(' ')
-            nvcc_flags += ['-O2']
-            extra_compile_args['nvcc'] = nvcc_flags
+        if suffix == 'hip':
+            define_macros += [('WITH_HIP', None)]
+            hipcc_flags = os.getenv('HIP_HIPCC_FLAGS', '')
+            hipcc_flags = [] if hipcc_flags == '' else hipcc_flags.split(' ')
+            hipcc_flags += ['-O2']
+            extra_compile_args['hipcc'] = hipcc_flags
 
         name = main.split(os.sep)[-1][:-4]
         sources = [main]
 
-        path = osp.join(extensions_dir, 'cuda', f'{name}_cuda.cu')
-        if suffix == 'cuda' and osp.exists(path):
+        path = osp.join(extensions_dir, 'hip', f'{name}_hip.hip')
+        if suffix == 'hip' and osp.exists(path):
             sources += [path]
         Extension = CUDAExtension
-        if name == 'spconv':  # ignore spconv
-            continue
         if name == 'version':
             extension = Extension(
                 'dgsparse._C',
