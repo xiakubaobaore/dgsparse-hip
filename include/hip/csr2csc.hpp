@@ -1,9 +1,9 @@
 #ifndef CSR2CSC_H
 #define CSR2CSC_H
 
-#include <hip_runtime.h>
-#include <hip_runtime_api.h>
-#include <hipsparse.h>
+#include <hip/hip_runtime.h>
+#include <hip/hip_runtime_api.h>
+#include <hipsparse/hipsparse.h>
 
 #include "hip_util.hpp"
 

@@ -1,9 +1,9 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include <hip_runtime.h>
-#include <hip_runtime_api.h>
-#include <hipsparse.h>
+#include <hip/hip_runtime.h>
+#include <hip/hip_runtime_api.h>
+#include <hipsparse/hipsparse.h>
 #include <stdio.h>
 
 #define checkHipError(a)                                                       \
