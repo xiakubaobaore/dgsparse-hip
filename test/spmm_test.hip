@@ -39,8 +39,10 @@ void init_random(float *A, int size){
     }
 }
 
+
  int main(int argc,char **argv)
 {
+
 
     int size_m = 1000;
     int size_k = 1000;
@@ -49,6 +51,7 @@ void init_random(float *A, int size){
     size_t size_B = size_n * size_k * sizeof(float);
     size_t size_C = size_m * size_n * sizeof(float);
     printf("[Spmm of %d*%d*%d elements]\n", size_m, size_k, size_n);
+
 
 //1.申请Host内存并初始化
     float *h_A = (float *)malloc(size_A);
@@ -108,6 +111,7 @@ void init_random(float *A, int size){
     float *d_C = NULL;
     checkhiperror(hipMalloc((void **)&d_C, size_C));
     int *d_E = NULL;
+    checkhiperror(hipMalloc((void **)&d_E, size_m * size_k * sizeof(int)));
     checkhiperror(hipMalloc((void **)&d_E, size_m * size_n * sizeof(int)));
     int *d_ptr = NULL;
     checkhiperror(hipMalloc((void **)&d_ptr, size_ptr));
