@@ -31,6 +31,12 @@ class Storage(object):
         col = col.contiguous()
 
         M: int = 0
+        if rowptr is not None:
+            M = rowptr.numel() - 1
+        elif row is not None and row.numel() > 0:
+            M = int(row.max()) + 1
+
+        N: int = 0
         if col.numel() > 0:
             N = int(col.max()) + 1
 

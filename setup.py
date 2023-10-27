@@ -38,7 +38,7 @@ def get_extensions():
             '-lm',
             '-ldl',
         ]
-        # extra_link_args += ['-lcusparse'] if suffix == 'cuda' else []
+        extra_link_args += ['-lhipsparse'] if suffix == 'hip' else []
 
         if suffix == 'hip':
             define_macros += [('WITH_HIP', None)]
