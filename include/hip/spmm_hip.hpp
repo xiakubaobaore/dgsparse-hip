@@ -54,11 +54,10 @@ csrspmm_seqreduce_rowbalance_kernel(const Index nr, const Index feature_size,
   }
 }
 
-__global__ void
-csrspmm_seqreduce_rowbalance_kernel_without_template(const int nr, const int feature_size,
-                                    const int rowPtr[], const int colIdx[],
-                                    const float values[], const float dnInput[],
-                                    float dnOutput[], int E[]) {
+__global__ void csrspmm_seqreduce_rowbalance_kernel_without_template(
+    const int nr, const int feature_size, const int rowPtr[],
+    const int colIdx[], const float values[], const float dnInput[],
+    float dnOutput[], int E[]) {
   int row_tile = hipBlockDim_y; // 8
   int subwarp_id = hipThreadIdx_x;
   int stride = row_tile * hipGridDim_x; // 8 * (m/8)
