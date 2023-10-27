@@ -21,6 +21,16 @@ do{\
 // A: sparse, m*k
 // B: dense, k*n
 // C: dense, m*n
+void init_random_sparse(float *A, int size, float threshold){
+    for(int i=0;i<size;i++){
+        if(rand()/(float)RAND_MAX < threshold){
+            A[i] = 1;
+        }
+        else{
+            A[i] = 0;
+        }
+    }
+}
 
 void init_random(float *A, int size){
     for(int i=0;i<size;i++){
@@ -28,10 +38,10 @@ void init_random(float *A, int size){
         A[i] = 1;
     }
 }
- 
+
  int main(int argc,char **argv)
 {
- 
+
     int size_m = 1000;
     int size_k = 1000;
     int size_n = 500;
@@ -39,30 +49,33 @@ void init_random(float *A, int size){
     size_t size_B = size_n * size_k * sizeof(float);
     size_t size_C = size_m * size_n * sizeof(float);
     printf("[Spmm of %d*%d*%d elements]\n", size_m, size_k, size_n);
- 
+
 //1.申请Host内存并初始化
     float *h_A = (float *)malloc(size_A);
     float *h_B = (float *)malloc(size_B);
     float *h_C = (float *)malloc(size_C);
-    int *E = (int *)calloc(size_m * size_k, sizeof(int));
+    int *E = (int *)calloc(size_m * size_n, sizeof(int));
 
     float *h_ref = (float *)malloc(size_C);
 
-    if (h_A == NULL || h_B == NULL || h_C == NULL 
+    if (h_A == NULL || h_B == NULL || h_C == NULL
         || E == NULL || h_ref == NULL){
         printf ("malloc failed\n");
         return -1;
     }
-    init_random(h_A, size_m*size_k);
+    init_random_sparse(h_A, size_m*size_k, 0.02);
     init_random(h_B, size_k*size_n);
     init_random(h_C, size_m*size_n);
+    // for(int i=0;i<size_m*size_k;i++){
+    //     printf("h_A[%d] = %f\n", i, h_A[i]);
+    // }
 
     std::vector<int> csrptr, csrind;
     std::vector<float> csrval;
     csrptr.push_back(0);
     for(int row=0;row < size_m;++row){
         for(int col=0;col < size_k;++col){
-            int id = row*size_m+size_k;
+            int id = row*size_k+col;
             if(h_A[id] != 0){
                 csrind.push_back(col);
                 csrval.push_back(h_A[id]);
@@ -70,6 +83,7 @@ void init_random(float *A, int size){
         }
         csrptr.push_back(csrind.size());
     }
+
     size_t size_ptr = csrptr.size() * sizeof(int);
     size_t size_ind = csrind.size() * sizeof(int);
     size_t size_val = csrval.size() * sizeof(float);
@@ -83,9 +97,10 @@ void init_random(float *A, int size){
     memcpy(rowptr, &csrptr[0], size_ptr);
     memcpy(rowind, &csrind[0], size_ind);
     memcpy(value, &csrval[0], size_val);
-    for(int i=0;i<csrptr.size();i++){
-        printf("rowptr[%d] = %f", i, )
-    }
+    // for(int i=0;i<csrind.size();i++){
+    //     printf("csrptr[%d] = %d\n", i, csrind[i]);
+    //     printf("rowptr[%d] = %d\n", i, rowind[i]);
+    // }
 
 //1.申请Device内存
     float *d_B = NULL;
@@ -93,23 +108,23 @@ void init_random(float *A, int size){
     float *d_C = NULL;
     checkhiperror(hipMalloc((void **)&d_C, size_C));
     int *d_E = NULL;
-    checkhiperror(hipMalloc((void **)&d_E, size_m * size_k * sizeof(int)));    
+    checkhiperror(hipMalloc((void **)&d_E, size_m * size_n * sizeof(int)));
     int *d_ptr = NULL;
     checkhiperror(hipMalloc((void **)&d_ptr, size_ptr));
     int *d_ind = NULL;
     checkhiperror(hipMalloc((void **)&d_ind, size_ind));
     float *d_val = NULL;
-    checkhiperror(hipMalloc((void **)&d_val, size_val));    
- 
+    checkhiperror(hipMalloc((void **)&d_val, size_val));
+
  //2.将两个向量从Host端提交到Device端
      checkhiperror(hipMemcpy(d_B,h_B,size_B,hipMemcpyHostToDevice));
-     checkhiperror(hipMemcpy(d_E,E,size_m * size_k * sizeof(int),hipMemcpyHostToDevice));
+     checkhiperror(hipMemcpy(d_E,E,size_m * size_n * sizeof(int),hipMemcpyHostToDevice));
      checkhiperror(hipMemcpy(d_ptr,rowptr,size_ptr,hipMemcpyHostToDevice));
      checkhiperror(hipMemcpy(d_ind,rowind,size_ind,hipMemcpyHostToDevice));
      checkhiperror(hipMemcpy(d_val,value,size_val,hipMemcpyHostToDevice));
 
- 
-//3.调用hip核函数 
+
+//3.调用hip核函数
      int Mdim_worker = csrptr.size() - 1;
      int Ndim_worker = size_n;
 
@@ -123,12 +138,12 @@ void init_random(float *A, int size){
      dim3 blockDim(Ndim_thread_per_tb, Mdim_thread_per_tb, 1);
 
      printf("launch kernel...\n");
-     
+
     //  SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
     //     SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
     //         hipLaunchKernelGGL(
     //             csrspmm_seqreduce_rowbalance_kernel,
-    //             gridDim, blockDim, 0, 0, 
+    //             gridDim, blockDim, 0, 0,
     //             Mdim_worker, Ndim_worker, &d_ptr, &d_ind, &d_val,
     //             &d_B, &d_C, &d_E);
     //     });
@@ -136,14 +151,13 @@ void init_random(float *A, int size){
 
     hipLaunchKernelGGL(
         csrspmm_seqreduce_rowbalance_kernel_without_template,
-        gridDim, blockDim, 0, 0, 
+        gridDim, blockDim, 0, 0,
         Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
         d_B, d_C, d_E);
 
-
      printf("HIP kernel launch with %d blocks of %d threads\n",
         Mdim_thread_per_tb*Ndim_thread_per_tb, Mdim_threadblock*Ndim_threadblock);
-  
+
 //4.将两个向量相乘的结果从Device端传回Host端
     checkhiperror(hipMemcpy(h_C,d_C,size_C,hipMemcpyDeviceToHost));
     checkhiperror(hipDeviceSynchronize());
@@ -166,7 +180,7 @@ void init_random(float *A, int size){
             exit(EXIT_FAILURE);
         }
     }
- 
+
 //5.释放内存
       hipFree(d_B);
       hipFree(d_C);
@@ -182,6 +196,6 @@ void init_random(float *A, int size){
       free(rowptr);
       free(rowind);
       free(value);
- 
+
      return 0;
  }
