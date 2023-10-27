@@ -44,9 +44,9 @@ void init_random(float *A, int size){
 {
 
 
-    int size_m = 1000;
-    int size_k = 1000;
-    int size_n = 500;
+    int size_m = 10;
+    int size_k = 10;
+    int size_n = 5;
     size_t size_A = size_m * size_k * sizeof(float);
     size_t size_B = size_n * size_k * sizeof(float);
     size_t size_C = size_m * size_n * sizeof(float);
@@ -68,7 +68,6 @@ void init_random(float *A, int size){
     }
     init_random_sparse(h_A, size_m*size_k, 0.02);
     init_random(h_B, size_k*size_n);
-    init_random(h_C, size_m*size_n);
     // for(int i=0;i<size_m*size_k;i++){
     //     printf("h_A[%d] = %f\n", i, h_A[i]);
     // }
@@ -143,21 +142,20 @@ void init_random(float *A, int size){
 
      printf("launch kernel...\n");
 
-    //  SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
-    //     SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
-    //         hipLaunchKernelGGL(
-    //             csrspmm_seqreduce_rowbalance_kernel,
-    //             gridDim, blockDim, 0, 0,
-    //             Mdim_worker, Ndim_worker, &d_ptr, &d_ind, &d_val,
-    //             &d_B, &d_C, &d_E);
-    //     });
-    //  });
+    SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
+        SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
+            csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>
+                <<<gridDim, blockDim>>>(
+                    Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
+                    d_B, d_C, d_E);
+        });
+    });
 
-    hipLaunchKernelGGL(
-        csrspmm_seqreduce_rowbalance_kernel_without_template,
-        gridDim, blockDim, 0, 0,
-        Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
-        d_B, d_C, d_E);
+    // hipLaunchKernelGGL(
+    //     csrspmm_seqreduce_rowbalance_kernel_without_template,
+    //     gridDim, blockDim, 0, 0,
+    //     Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
+    //     d_B, d_C, d_E);
 
      printf("HIP kernel launch with %d blocks of %d threads\n",
         Mdim_thread_per_tb*Ndim_thread_per_tb, Mdim_threadblock*Ndim_threadblock);
@@ -166,6 +164,7 @@ void init_random(float *A, int size){
     checkhiperror(hipMemcpy(h_C,d_C,size_C,hipMemcpyDeviceToHost));
     checkhiperror(hipDeviceSynchronize());
     //对比CPU和GPU计算结果误差
+
     for(int row = 0; row<size_m;row++){
         for(int col = 0; col<size_n;col++){
             int id = row*size_m+col;
@@ -174,6 +173,10 @@ void init_random(float *A, int size){
                 h_ref[id] += h_A[row*size_m+k]*h_B[col*size_k+k];
             }
         }
+    }
+    for(int i=0;i<size_m*size_n;++i){
+        printf("h_C[%d] = %f\n", i, h_C[i]);
+        printf("h_ref[%d] = %f\n", i, h_ref[i]);
     }
 
    for (int i = 0; i < size_C; ++i)

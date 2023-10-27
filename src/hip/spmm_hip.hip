@@ -13,7 +13,7 @@
 #include "../../include/gspmm.h"
 
 std::vector<torch::Tensor>
-spmm_cuda(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
+spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
           torch::Tensor in_feat, bool has_value, int64_t algorithm,
           REDUCEOP reduce_op, COMPUTEOP compute_op) {
   //   assertTensor(csrptr, torch::kInt32);
@@ -54,9 +54,8 @@ spmm_cuda(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
     if (has_value)
       SWITCH_REDUCEOP(reduce_op, REDUCE, {
         SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-          hipLaunchKernelGGL(
-            csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>,
-            gridDim, blockDim, 0, 0,
+          csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>,
+          <<<gridDim, blockDim>>>(
             Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
             indices.data_ptr<int>(), edge_val.data_ptr<float>(),
             in_feat.data_ptr<float>(), out_feat.data_ptr<float>(),
@@ -67,9 +66,8 @@ spmm_cuda(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
     else
       SWITCH_REDUCEOP(reduce_op, REDUCE, {
         SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-          hipLaunchKernelGGL(
-            csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>,
-            gridDim, blockDim, 0, 0,
+          csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>
+          <<<gridDim, blockDim>>>(
             Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
             indices.data_ptr<int>(), (float *)nullptr,
             in_feat.data_ptr<float>(), out_feat.data_ptr<float>(),

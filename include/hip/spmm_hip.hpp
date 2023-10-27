@@ -79,10 +79,9 @@ __global__ void csrspmm_seqreduce_rowbalance_kernel_without_template(
         float val_pre_red;
         col = __ldg(colIdx + p);
         val = __guard_load_default_one<float>(values, p);
-        res += val * __ldg(dnInput + col * feature_size);
+        val_pre_red = val * __ldg(dnInput + col * feature_size);
+        res += val_pre_red;
       }
-    } else {
-      res = 0;
     }
     dnOutput[row * feature_size] = res;
     E[row * feature_size] = E_k_idx;
