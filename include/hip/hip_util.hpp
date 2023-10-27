@@ -1,8 +1,8 @@
 #ifndef UTIL_H
 #define UTIL_H
 
-#include <hip_runtime.h>
-#include <hip_runtime_api.h>
+#include <hip/hip_runtime.h>
+#include <hip/hip_runtime_api.h>
 #include <hipsparse.h>
 #include <stdio.h>
 
@@ -26,4 +26,18 @@
     }                                                                          \
   } while (0)
 
+#define CEIL(x, y) (((x) + (y)-1) / (y))
+
+#define FULLMASK 0xffffffff
+#define MIN(a, b) ((a < b) ? a : b)
+#define MAX(a, b) ((a < b) ? b : a)
+
+template <typename T>
+__device__ __forceinline__ T __guard_load_default_one(const T *base,
+                                                      int offset) {
+  if (base != nullptr)
+    return base[offset];
+  else
+    return static_cast<T>(1);
+}
 #endif
