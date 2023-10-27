@@ -39,11 +39,8 @@ void init_random(float *A, int size){
     }
 }
 
-
  int main(int argc,char **argv)
 {
-
-
     int size_m = 10;
     int size_k = 10;
     int size_n = 5;
@@ -110,7 +107,6 @@ void init_random(float *A, int size){
     float *d_C = NULL;
     checkhiperror(hipMalloc((void **)&d_C, size_C));
     int *d_E = NULL;
-    checkhiperror(hipMalloc((void **)&d_E, size_m * size_k * sizeof(int)));
     checkhiperror(hipMalloc((void **)&d_E, size_m * size_n * sizeof(int)));
     int *d_ptr = NULL;
     checkhiperror(hipMalloc((void **)&d_ptr, size_ptr));
@@ -174,10 +170,16 @@ void init_random(float *A, int size){
             }
         }
     }
-    for(int i=0;i<size_m*size_n;++i){
-        printf("h_C[%d] = %f\n", i, h_C[i]);
-        printf("h_ref[%d] = %f\n", i, h_ref[i]);
+    for(int row=0;row<size_m;row++){
+        for(int col=0;col<size_n;col++){
+            printf("h_C[%d][%d] = %f ", row, col, h_C[row*size_n+col]);
+        }
+        printf("\n");
     }
+    // for(int i=0;i<size_m*size_n;++i){
+    //     printf("h_C[%d] = %f\n", i, h_C[i]);
+    //     printf("h_ref[%d] = %f\n", i, h_ref[i]);
+    // }
 
    for (int i = 0; i < size_C; ++i)
     {

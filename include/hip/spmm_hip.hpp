@@ -50,6 +50,7 @@ csrspmm_seqreduce_rowbalance_kernel(const Index nr, const Index feature_size,
       res = 0;
     }
     dnOutput[row * feature_size] = res;
+    // dnOutput[row * feature_size] = 1000;
     E[row * feature_size] = E_k_idx;
   }
 }

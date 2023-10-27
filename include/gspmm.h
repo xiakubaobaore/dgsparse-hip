@@ -129,7 +129,7 @@ struct Div {
     }                                                                          \
   })
 
-__device__ __forceinline__ int init(REDUCEOP op) {
+__device__ __forceinline__ float init(REDUCEOP op) {
   switch (op) {
   case SUM:
     return 0;

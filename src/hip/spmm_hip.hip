@@ -1,4 +1,5 @@
-#include <c10/cuda/CUDAGuard.h>
+// #include <c10/cuda/CUDAGuard.h>
+#include <ATen/hip/impl/HIPGuardImplMasqueradingAsCUDA.h>
 #include <torch/extension.h>
 
 #include <iostream>
@@ -54,7 +55,7 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
     if (has_value)
       SWITCH_REDUCEOP(reduce_op, REDUCE, {
         SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-          csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>,
+          csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>
           <<<gridDim, blockDim>>>(
             Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
             indices.data_ptr<int>(), edge_val.data_ptr<float>(),

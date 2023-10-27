@@ -50,7 +50,7 @@ def get_extensions():
         name = main.split(os.sep)[-1][:-4]
         sources = [main]
 
-        path = osp.join(extensions_dir, 'hip', f'{name}.hip')
+        path = osp.join(extensions_dir, 'hip', f'{name}_hip.hip')
         if suffix == 'hip' and osp.exists(path):
             sources += [path]
         Extension = CUDAExtension
