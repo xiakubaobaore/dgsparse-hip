@@ -21,6 +21,7 @@ if IS_HIP_EXTENSION:
 suffices = ['hip'] if WITH_HIP else ['cpu']
 print(f'Building with HIP: {WITH_HIP}, ', 'HIP_HOME:', HIP_HOME)
 
+
 def get_extensions():
     extensions = []
     extensions_dir = osp.join('src')
