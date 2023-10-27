@@ -54,6 +54,41 @@ csrspmm_seqreduce_rowbalance_kernel(const Index nr, const Index feature_size,
   }
 }
 
+__global__ void
+csrspmm_seqreduce_rowbalance_kernel_without_template(const int nr, const int feature_size,
+                                    const int rowPtr[], const int colIdx[],
+                                    const float values[], const float dnInput[],
+                                    float dnOutput[], int E[]) {
+  int row_tile = hipBlockDim_y; // 8
+  int subwarp_id = hipThreadIdx_x;
+  int stride = row_tile * hipGridDim_x; // 8 * (m/8)
+  int row = hipBlockIdx_x * row_tile + subwarp_id;
+  int v_id = (hipBlockIdx_y * hipBlockDim_x) + hipThreadIdx_x;
+  dnInput += v_id;
+  dnOutput += v_id;
+  E += v_id;
+  float val;
+  // DType res = init(REDUCE::Op);
+  int col;
+  for (; row < nr; row += stride) {
+    float res = 0;
+    int E_k_idx = -1;
+    int start = __ldg(rowPtr + row);
+    int end = __ldg(rowPtr + row + 1);
+    if ((end - start) > 0) {
+      for (int p = start; p < end; p++) {
+        float val_pre_red;
+        col = __ldg(colIdx + p);
+        val = __guard_load_default_one<float>(values, p);
+        res += val * __ldg(dnInput + col * feature_size);
+      }
+    } else {
+      res = 0;
+    }
+    dnOutput[row * feature_size] = res;
+    E[row * feature_size] = E_k_idx;
+  }
+}
 // template <typename Index, typename DType>
 // __global__ void csrspmm_seqreduce_rowbalance_with_mask_kernel(
 //     const Index nr, const Index feature_size, const Index rowPtr[],

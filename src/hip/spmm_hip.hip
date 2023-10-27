@@ -54,7 +54,7 @@ spmm_cuda(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
       SWITCH_REDUCEOP(reduce_op, REDUCE, {
         SWITCH_COMPUTEOP(compute_op, COMPUTE, {
           hipLaunchKernelGGL(
-            <int, float, REDUCE, COMPUTE>csrspmm_seqreduce_rowbalance_kernel,
+            csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>,
             gridDim, blockDim, 0, 0,
             Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
             indices.data_ptr<int>(), edge_val.data_ptr<float>(),
@@ -67,7 +67,7 @@ spmm_cuda(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
       SWITCH_REDUCEOP(reduce_op, REDUCE, {
         SWITCH_COMPUTEOP(compute_op, COMPUTE, {
           hipLaunchKernelGGL(
-            <int, float, REDUCE, COMPUTE>csrspmm_seqreduce_rowbalance_kernel,
+            csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>,
             gridDim, blockDim, 0, 0,
             Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
             indices.data_ptr<int>(), (float *)nullptr,

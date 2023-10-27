@@ -1,8 +1,8 @@
 #ifndef GSPMM
 #define GSPMM
 
-#include <hip_runtime.h>
-#include <hip_runtime_api.h>
+#include <hip/hip_runtime.h>
+#include <hip/hip_runtime_api.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -129,7 +129,7 @@ struct Div {
     }                                                                          \
   })
 
-__device__ __forceinline__ float init(REDUCEOP op) {
+__device__ __forceinline__ int init(REDUCEOP op) {
   switch (op) {
   case SUM:
     return 0;
