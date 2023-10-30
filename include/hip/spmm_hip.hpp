@@ -13,11 +13,17 @@ csrspmm_seqreduce_rowbalance_kernel(const Index nr, const Index feature_size,
                                     const Index rowPtr[], const Index colIdx[],
                                     const DType values[], const DType dnInput[],
                                     DType dnOutput[], Index E[]) {
-  Index row_tile = hipBlockDim_y; // 8
-  Index subwarp_id = hipThreadIdx_x;
-  Index stride = row_tile * hipGridDim_x; // 8 * (m/8)
-  Index row = hipBlockIdx_x * row_tile + subwarp_id;
-  Index v_id = (hipBlockIdx_y * hipBlockDim_x) + hipThreadIdx_x;
+  Index row_tile = blockDim.y; // 8
+  Index subwarp_id = threadIdx.y;
+  Index stride = row_tile * gridDim.x; // 8 * (m/8)
+  Index row = blockIdx.x * row_tile + subwarp_id;
+  Index v_id = (blockIdx.y * blockDim.x) + threadIdx.x;
+  // if(row == 0 && v_id == 0){
+  //   printf("stride = %d\n", stride);
+  //   printf("HIP kernel launch with %d*%d blocks of %d*%d threads\n",
+  //   int(gridDim.x), int(gridDim.y), int(blockDim.x), int(blockDim.y));
+  // }
+
   dnInput += v_id;
   dnOutput += v_id;
   E += v_id;
@@ -59,11 +65,11 @@ __global__ void csrspmm_seqreduce_rowbalance_kernel_without_template(
     const int nr, const int feature_size, const int rowPtr[],
     const int colIdx[], const float values[], const float dnInput[],
     float dnOutput[], int E[]) {
-  int row_tile = hipBlockDim_y; // 8
-  int subwarp_id = hipThreadIdx_x;
-  int stride = row_tile * hipGridDim_x; // 8 * (m/8)
-  int row = hipBlockIdx_x * row_tile + subwarp_id;
-  int v_id = (hipBlockIdx_y * hipBlockDim_x) + hipThreadIdx_x;
+  int row_tile = blockDim.y; // 8
+  int subwarp_id = threadIdx.y;
+  int stride = row_tile * gridDim.x; // 8 * (m/8)
+  int row = blockIdx.x * row_tile + subwarp_id;
+  int v_id = (blockIdx.y * blockDim.x) + threadIdx.x;
   dnInput += v_id;
   dnOutput += v_id;
   E += v_id;

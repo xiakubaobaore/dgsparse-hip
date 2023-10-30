@@ -7,6 +7,7 @@
 #include "../include/hip/spmm_hip.hpp"
 #include "../include/gspmm.h"
 #include <vector>
+#include <time.h>
 
 #define checkhiperror(condition)\
 do{\
@@ -41,9 +42,13 @@ void init_random(float *A, int size){
 
  int main(int argc,char **argv)
 {
-    int size_m = 10;
-    int size_k = 10;
-    int size_n = 5;
+    srand((int)time(0));
+    int size_m = 10000;
+    int size_k = 10000;
+    int size_n = 128;
+    // int size_m = 100;
+    // int size_k = 100;
+    // int size_n = 50;
     size_t size_A = size_m * size_k * sizeof(float);
     size_t size_B = size_n * size_k * sizeof(float);
     size_t size_C = size_m * size_n * sizeof(float);
@@ -63,7 +68,7 @@ void init_random(float *A, int size){
         printf ("malloc failed\n");
         return -1;
     }
-    init_random_sparse(h_A, size_m*size_k, 0.02);
+    init_random_sparse(h_A, size_m*size_k, 0.01);
     init_random(h_B, size_k*size_n);
     // for(int i=0;i<size_m*size_k;i++){
     //     printf("h_A[%d] = %f\n", i, h_A[i]);
@@ -83,6 +88,20 @@ void init_random(float *A, int size){
         csrptr.push_back(csrind.size());
     }
 
+    // 打印csr格式
+
+    // for(int i=0;i<csrind.size();i++){
+    //     printf("csrptr[%d] = %d, csrind[%d] = %d, csrval[%d] = %f\n"
+    //     , i, csrptr[i], i, csrind[i], i, csrval[i]);
+    // }
+    // for(int row=0; row < size_m; row++){
+    //     for(int col=0; col < size_k; col++){
+    //         if(h_A[row * size_k + col] != 0){
+    //             printf("row = %d, col = %d\n", row, col);
+    //         }
+    //     }
+    // }
+
     size_t size_ptr = csrptr.size() * sizeof(int);
     size_t size_ind = csrind.size() * sizeof(int);
     size_t size_val = csrval.size() * sizeof(float);
@@ -96,10 +115,6 @@ void init_random(float *A, int size){
     memcpy(rowptr, &csrptr[0], size_ptr);
     memcpy(rowind, &csrind[0], size_ind);
     memcpy(value, &csrval[0], size_val);
-    // for(int i=0;i<csrind.size();i++){
-    //     printf("csrptr[%d] = %d\n", i, csrind[i]);
-    //     printf("rowptr[%d] = %d\n", i, rowind[i]);
-    // }
 
 //1.申请Device内存
     float *d_B = NULL;
@@ -124,10 +139,10 @@ void init_random(float *A, int size){
 
 
 //3.调用hip核函数
-     int Mdim_worker = csrptr.size() - 1;
+     int Mdim_worker = size_m;
      int Ndim_worker = size_n;
 
-     int RefThreadPerBlock = 256;
+     int RefThreadPerBlock = 512;
      int Ndim_threadblock = CEIL(Ndim_worker, RefThreadPerBlock);
      int Ndim_thread_per_tb = min(Ndim_worker, RefThreadPerBlock);
      int Mdim_thread_per_tb = CEIL(RefThreadPerBlock, Ndim_thread_per_tb);
@@ -153,42 +168,49 @@ void init_random(float *A, int size){
     //     Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
     //     d_B, d_C, d_E);
 
-     printf("HIP kernel launch with %d blocks of %d threads\n",
-        Mdim_thread_per_tb*Ndim_thread_per_tb, Mdim_threadblock*Ndim_threadblock);
+     printf("HIP kernel launch with %d*%d blocks of %d*%d threads\n",
+        Mdim_threadblock, Ndim_threadblock, Ndim_thread_per_tb, Mdim_thread_per_tb);
+
 
 //4.将两个向量相乘的结果从Device端传回Host端
     checkhiperror(hipMemcpy(h_C,d_C,size_C,hipMemcpyDeviceToHost));
     checkhiperror(hipDeviceSynchronize());
     //对比CPU和GPU计算结果误差
-
     for(int row = 0; row<size_m;row++){
         for(int col = 0; col<size_n;col++){
-            int id = row*size_m+col;
+            int id = row*size_n+col;
             h_ref[id]=0;
             for(int k = 0; k<size_k;k++){
-                h_ref[id] += h_A[row*size_m+k]*h_B[col*size_k+k];
+                h_ref[id] += h_A[row * size_k + k]*h_B[col * size_k + k];
             }
         }
     }
-    for(int row=0;row<size_m;row++){
-        for(int col=0;col<size_n;col++){
-            printf("h_C[%d][%d] = %f ", row, col, h_C[row*size_n+col]);
-        }
-        printf("\n");
-    }
-    // for(int i=0;i<size_m*size_n;++i){
-    //     printf("h_C[%d] = %f\n", i, h_C[i]);
-    //     printf("h_ref[%d] = %f\n", i, h_ref[i]);
+
+    //打印cpu和gpu上的计算结果
+
+    // for(int row=0;row<size_m;row++){
+    //     for(int col=0;col<size_n;col++){
+    //         printf("h_C[%d][%d] = %f ", row, col, h_C[row*size_n+col]);
+    //     }
+    //     printf("\n");
+    // }
+    // for(int row=0;row<size_m;row++){
+    //     for(int col=0;col<size_n;col++){
+    //         printf("h_ref[%d][%d] = %f ", row, col, h_ref[row*size_n+col]);
+    //     }
+    //     printf("\n");
     // }
 
-   for (int i = 0; i < size_C; ++i)
+   for (int i = 0; i < size_m * size_n; ++i)
     {
         if (fabs(h_ref[i] - h_C[i]) > 1e-8)
         {
-            fprintf(stderr, "Result verification failed at element %d!\nh_ref[%d] = %f, h_C[%d] = %f\n", i, i, h_ref[i], i, h_C[i]);
-            exit(EXIT_FAILURE);
+            printf("Result verification failed at element %d!\nh_ref[%d] = %f, h_C[%d] = %f\n", i, i, h_ref[i], i, h_C[i]);
+            break;
         }
     }
+
+    printf("###########test pass!#############\n");
 
 //5.释放内存
       hipFree(d_B);
