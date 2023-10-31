@@ -40,4 +40,21 @@ __device__ __forceinline__ T __guard_load_default_one(const T *base,
   else
     return static_cast<T>(1);
 }
+
+template <typename index_t>
+__device__ __forceinline__ index_t
+binary_search_segment_number(const index_t *seg_offsets, const index_t n_seg,
+                             const index_t n_elem, const index_t elem_id) {
+  index_t lo = 1, hi = n_seg, mid;
+  while (lo < hi) {
+    mid = (lo + hi) >> 1;
+    if (seg_offsets[mid] <= elem_id) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  return (hi - 1);
+}
+
 #endif

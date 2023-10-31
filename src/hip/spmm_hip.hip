@@ -75,6 +75,40 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
             out_E.data_ptr<int>());
         });
       });
+  } else if (algorithm == 1) {
+    int Nnzdim_worker = indices.size(0);
+    int Ndim_worker = in_feat.size(1);
+    int RefThreadPerBlock = 256;
+    int Ndim_threadblock = CEIL(Ndim_worker, RefThreadPerBlock);
+    int Ndim_thread_per_tb = min(Ndim_worker, RefThreadPerBlock);
+    int Nnzdim_thread_per_tb = CEIL(RefThreadPerBlock, Ndim_thread_per_tb);
+    int Nnzdim_threadblock = CEIL(Nnzdim_worker, Nnzdim_thread_per_tb);
+
+    dim3 gridDim(Nnzdim_threadblock, Ndim_threadblock, 1);
+    dim3 blockDim(Ndim_thread_per_tb, Nnzdim_thread_per_tb, 1);
+
+    if (has_value)
+      SWITCH_REDUCEOP(reduce_op, REDUCE, {
+        SWITCH_COMPUTEOP(compute_op, COMPUTE, {
+          csrspmm_seqreduce_nnzbalance_kernel<int, float, REDUCE, COMPUTE>
+              <<<gridDim, blockDim>>>(
+                  v, Ndim_worker, Nnzdim_worker, csrptr.data_ptr<int>(),
+                  indices.data_ptr<int>(), edge_val.data_ptr<float>(),
+                  in_feat.data_ptr<float>(), out_feat.data_ptr<float>(),
+                  out_E.data_ptr<int>());
+        });
+      });
+    else
+      SWITCH_REDUCEOP(reduce_op, REDUCE, {
+        SWITCH_COMPUTEOP(compute_op, COMPUTE, {
+          csrspmm_seqreduce_nnzbalance_kernel<int, float, REDUCE, COMPUTE>
+              <<<gridDim, blockDim>>>(
+                  v, Ndim_worker, Nnzdim_worker, csrptr.data_ptr<int>(),
+                  indices.data_ptr<int>(), (float *)nullptr,
+                  in_feat.data_ptr<float>(), out_feat.data_ptr<float>(),
+                  out_E.data_ptr<int>());
+        });
+      });
   }
 
   SWITCH_REDUCEOP(reduce_op, REDUCE, {

@@ -1,74 +1,60 @@
-import torch_geometric.datasets as datasets
-from ogb.nodeproppred import PygNodePropPredDataset
-from torch_geometric.utils import to_scipy_sparse_matrix
 import torch
-import torch_sparse
+import dgl
+import scipy
+import numpy as np
 
 
 class GraphDataset:
 
-    def __init__(self, name: str, device):
+    def __init__(self, name: str, device) -> None:
+        print()
+        print(
+            f'---------------- initing {name} dataset on {device} ----------------'
+        )
         self.name = name
         self.device = device
         self.get_dataset()
 
     def get_dataset(self):
-        if self.name == 'arxiv':
-            arxiv = PygNodePropPredDataset(root='./data/', name='ogbn-arxiv')
-            graph = arxiv[0]
-        elif self.name == 'proteins':
-            proteins = PygNodePropPredDataset(root='./data/',
-                                              name='ogbn-proteins')
-            graph = proteins[0]
-        elif self.name == 'products':
-            products = PygNodePropPredDataset(root='./data/',
-                                              name='ogbn-products')
-            graph = products[0]
-        elif self.name == 'pubmed':
-            dataset = datasets.Planetoid(root='./data/', name='Pubmed')
+        if self.name == 'cora':
+            dataset = dgl.data.CoraGraphDataset()
             graph = dataset[0]
         elif self.name == 'citeseer':
-            dataset = datasets.Planetoid(root='./data/', name='Citeseer')
+            dataset = dgl.data.CiteseerGraphDataset()
             graph = dataset[0]
-        elif self.name == 'cora':
-            dataset = datasets.Planetoid(root='./data/', name='Cora')
+        elif self.name == 'pubmed':
+            dataset = dgl.data.PubmedGraphDataset()
             graph = dataset[0]
         elif self.name == 'ppi':
-            dataset = datasets.PPI(root='./data/Ppi')
+            dataset = dgl.data.PPIDataset()
             graph = dataset[0]
         elif self.name == 'reddit':
-            dataset = datasets.Reddit(root='./data/Reddit')
-            graph = dataset[0]
-        elif self.name == 'github':
-            dataset = datasets.GitHub(root='./data')
+            dataset = dgl.data.RedditDataset()
             graph = dataset[0]
         else:
-            raise KeyError('Unknown dataset {}.'.format(self.name))
-        scipy_coo = to_scipy_sparse_matrix(graph.edge_index,
-                                           num_nodes=graph.num_nodes)
+            raise KeyError(f'UnKnown dataset {self.name}')
+        num_nodes = graph.num_nodes()
+        row, col = graph.adj_tensors('coo')
+        data = np.ones(col.shape)
+        scipy_coo = scipy.sparse.csr_matrix((data, (row, col)),
+                                            shape=(num_nodes, num_nodes))
         scipy_csr = scipy_coo.tocsr()
         rowptr = scipy_csr.indptr
         col = scipy_csr.indices
-        weight = torch.ones(col.shape, requires_grad=True)
-        self.num_nodes = graph.num_nodes
-        self.tcsr = torch.sparse_csr_tensor(
-            rowptr,
-            col,
-            weight,
-            dtype=torch.float,
-            size=(self.num_nodes, self.num_nodes),
-            requires_grad=True,
-            device=self.device,
-        )
-        adj_t = torch.sparse_csr_tensor(
-            torch.tensor(rowptr, dtype=torch.long),
-            torch.tensor(col, dtype=torch.long),
-            weight,
-            dtype=torch.float,
-            size=(self.num_nodes, self.num_nodes),
-            requires_grad=True,
-            device=self.device,
-        )
-        self.adj_t = torch_sparse.SparseTensor.from_torch_sparse_csr_tensor(
-            adj_t)
-        self.features = graph.x.to(self.device)
+        value = scipy_csr.data
+        self.num_nodes = num_nodes
+        self.tcsr = torch.sparse_csr_tensor(rowptr,
+                                            col,
+                                            value,
+                                            dtype=torch.float,
+                                            size=(self.num_nodes,
+                                                  self.num_nodes),
+                                            requires_grad=True,
+                                            device=self.device)
+
+
+if __name__ == '__main__':
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    gc = GraphDataset('cora', device)
+    gc = GraphDataset('citeseer', device)
+    gc = GraphDataset('pubmed', device)
