@@ -9,15 +9,7 @@
 
 #include "../include/hip/spmm_hip.hpp"
 #include "../include/gspmm.h"
-
-#define checkhiperror(condition)\
-do{\
-    if(hipSuccess != (condition)) {\
-        fprintf(stderr, "Hip runTime error in line %d of file %s, \n",\
-                __LINE__, __FILE__, hipGetErrorString(hipGetLastError()));\
-        exit(EXIT_FAILURE);\
-    }\
-}while(0)
+#include "../include/hip/hip_util.hpp"
 
 enum method{
     rocsparse = 0,
@@ -69,6 +61,8 @@ bool check_result(float *C_ref, float *C, int num){
     }
     return flag;
 }
+
+
 
 float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsity, method algorithm)
 {
@@ -122,28 +116,28 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
 
     //申请Device内存
     float *d_B = NULL;
-    checkhiperror(hipMalloc((void **)&d_B, size_B));
+    checkHipError(hipMalloc((void **)&d_B, size_B));
     float *d_B_trans = NULL;
-    checkhiperror(hipMalloc((void **)&d_B_trans, size_B));
+    checkHipError(hipMalloc((void **)&d_B_trans, size_B));
     float *d_C = NULL;
-    checkhiperror(hipMalloc((void **)&d_C, size_C));
+    checkHipError(hipMalloc((void **)&d_C, size_C));
     hipMemset((void *)d_C, 0, size_C);
     int *d_E = NULL;
-    checkhiperror(hipMalloc((void **)&d_E, size_m * size_n * sizeof(int)));
+    checkHipError(hipMalloc((void **)&d_E, size_m * size_n * sizeof(int)));
     int *d_ptr = NULL;
-    checkhiperror(hipMalloc((void **)&d_ptr, size_ptr));
+    checkHipError(hipMalloc((void **)&d_ptr, size_ptr));
     int *d_ind = NULL;
-    checkhiperror(hipMalloc((void **)&d_ind, size_ind));
+    checkHipError(hipMalloc((void **)&d_ind, size_ind));
     float *d_val = NULL;
-    checkhiperror(hipMalloc((void **)&d_val, size_val));
+    checkHipError(hipMalloc((void **)&d_val, size_val));
 
     //从Host端提交到Device端
-    checkhiperror(hipMemcpy(d_B,h_B,size_B,hipMemcpyHostToDevice));
-    checkhiperror(hipMemcpy(d_B_trans,h_B_trans,size_B,hipMemcpyHostToDevice));
-    checkhiperror(hipMemcpy(d_E,E,size_m * size_n * sizeof(int),hipMemcpyHostToDevice));
-    checkhiperror(hipMemcpy(d_ptr,rowptr,size_ptr,hipMemcpyHostToDevice));
-    checkhiperror(hipMemcpy(d_ind,rowind,size_ind,hipMemcpyHostToDevice));
-    checkhiperror(hipMemcpy(d_val,value,size_val,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_B,h_B,size_B,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_B_trans,h_B_trans,size_B,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_E,E,size_m * size_n * sizeof(int),hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_ptr,rowptr,size_ptr,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_ind,rowind,size_ind,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_val,value,size_val,hipMemcpyHostToDevice));
 
     clock_t start, end;
     float time_elapsed;
@@ -288,7 +282,7 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
             time_elapsed = (end - start) * 1.0/circle_num;
             printf("dgsparse_2 kernel time = %fms\n", time_elapsed);
         }
-        if (coarsen_factor == 2){
+        else if (coarsen_factor == 2){
             start = clock();
             for(int circle = 0; circle < circle_num; ++circle){
                 SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
@@ -321,7 +315,7 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
             printf("dgsparse_2 kernel time = %fms\n", time_elapsed);
         }
     }
-    checkhiperror(hipDeviceSynchronize());
+    checkHipError(hipDeviceSynchronize());
 
     // 释放内存
     hipFree(d_B);
@@ -401,28 +395,28 @@ bool spmm_check(int size_m, int size_k, int size_n, method algorithm)
 
     //申请Device内存
     float *d_B = NULL;
-    checkhiperror(hipMalloc((void **)&d_B, size_B));
+    checkHipError(hipMalloc((void **)&d_B, size_B));
     float *d_B_trans = NULL;
-    checkhiperror(hipMalloc((void **)&d_B_trans, size_B));
+    checkHipError(hipMalloc((void **)&d_B_trans, size_B));
     float *d_C = NULL;
-    checkhiperror(hipMalloc((void **)&d_C, size_C));
+    checkHipError(hipMalloc((void **)&d_C, size_C));
     hipMemset((void *)d_C, 0, size_C);
     int *d_E = NULL;
-    checkhiperror(hipMalloc((void **)&d_E, size_m * size_n * sizeof(int)));
+    checkHipError(hipMalloc((void **)&d_E, size_m * size_n * sizeof(int)));
     int *d_ptr = NULL;
-    checkhiperror(hipMalloc((void **)&d_ptr, size_ptr));
+    checkHipError(hipMalloc((void **)&d_ptr, size_ptr));
     int *d_ind = NULL;
-    checkhiperror(hipMalloc((void **)&d_ind, size_ind));
+    checkHipError(hipMalloc((void **)&d_ind, size_ind));
     float *d_val = NULL;
-    checkhiperror(hipMalloc((void **)&d_val, size_val));
+    checkHipError(hipMalloc((void **)&d_val, size_val));
 
     //从Host端提交到Device端
-    checkhiperror(hipMemcpy(d_B,h_B,size_B,hipMemcpyHostToDevice));
-    checkhiperror(hipMemcpy(d_B_trans,h_B_trans,size_B,hipMemcpyHostToDevice));
-    checkhiperror(hipMemcpy(d_E,E,size_m * size_n * sizeof(int),hipMemcpyHostToDevice));
-    checkhiperror(hipMemcpy(d_ptr,rowptr,size_ptr,hipMemcpyHostToDevice));
-    checkhiperror(hipMemcpy(d_ind,rowind,size_ind,hipMemcpyHostToDevice));
-    checkhiperror(hipMemcpy(d_val,value,size_val,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_B,h_B,size_B,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_B_trans,h_B_trans,size_B,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_E,E,size_m * size_n * sizeof(int),hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_ptr,rowptr,size_ptr,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_ind,rowind,size_ind,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_val,value,size_val,hipMemcpyHostToDevice));
 
     //调用kernel
     if (algorithm == method::rocsparse){
@@ -580,8 +574,8 @@ bool spmm_check(int size_m, int size_k, int size_n, method algorithm)
         }
     }
     //将结果从Device端传回Host端
-    checkhiperror(hipMemcpy(h_C,d_C,size_C,hipMemcpyDeviceToHost));
-    checkhiperror(hipDeviceSynchronize());
+    checkHipError(hipMemcpy(h_C,d_C,size_C,hipMemcpyDeviceToHost));
+    checkHipError(hipDeviceSynchronize());
 
     bool flag = false;
     if(check_result(h_ref, h_C, size_m * size_n)){
