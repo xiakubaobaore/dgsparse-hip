@@ -49,8 +49,9 @@ int main() {
   int *h_col = new int[nnz]{0, 2, 3, 1, 0, 2, 3, 1, 3};
   float *h_val = new float[nnz]{1., 2., 3., 4., 5., 6., 7., 8., 9.};
 
-  // float *h_b = new float[k * n]{10, 40, 70, 4, 20, 50, 80, 5, 30, 60, 90, 6};
-  float *h_b = new float[k * n]{10, 20, 30, 40, 50, 60, 70, 80, 90, 4, 5, 6};
+  float *h_b = new float[k * n]{10, 40, 70, 4, 20, 50, 80, 5, 30, 60, 90, 6};
+  //   float *h_b = new float[k * n]{10, 20, 30, 40, 50, 60, 70, 80, 90, 4, 5,
+  //   6};
 
   float *h_c = new float[m * n];
 

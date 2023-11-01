@@ -18,12 +18,6 @@ csrspmm_seqreduce_rowbalance_kernel(const Index nr, const Index feature_size,
   Index stride = row_tile * gridDim.x; // 8 * (m/8)
   Index row = blockIdx.x * row_tile + subwarp_id;
   Index v_id = (blockIdx.y * blockDim.x) + threadIdx.x;
-  // if(row == 0 && v_id == 0){
-  //   printf("stride = %d\n", stride);
-  //   printf("HIP kernel launch with %d*%d blocks of %d*%d threads\n",
-  //   int(gridDim.x), int(gridDim.y), int(blockDim.x), int(blockDim.y));
-  // }
-
   dnInput += v_id;
   dnOutput += v_id;
   E += v_id;
@@ -56,7 +50,6 @@ csrspmm_seqreduce_rowbalance_kernel(const Index nr, const Index feature_size,
       res = 0;
     }
     dnOutput[row * feature_size] = res;
-    // dnOutput[row * feature_size] = 1000;
     E[row * feature_size] = E_k_idx;
   }
 }
@@ -94,6 +87,7 @@ __global__ void csrspmm_seqreduce_rowbalance_kernel_without_template(
     E[row * feature_size] = E_k_idx;
   }
 }
+
 // template <typename Index, typename DType>
 // __global__ void csrspmm_seqreduce_rowbalance_with_mask_kernel(
 //     const Index nr, const Index feature_size, const Index rowPtr[],
