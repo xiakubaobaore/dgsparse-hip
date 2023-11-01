@@ -170,6 +170,38 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
 //   return out_feat;
 // };
 
+torch::Tensor sddmm_cuda_csr(torch::Tensor rowptr, torch::Tensor colind,
+                             torch::Tensor D1, torch::Tensor D2,
+                             REDUCEOP reduce_op) {
+  D1 = D1.contiguous();
+  D2 = D2.contiguous();
+  const auto m = D1.size(0);
+  const auto k = D1.size(1);
+  const auto nnz = colind.size(0);
+  auto devid = D1.device().index();
+  auto options =
+      torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA, devid);
+  auto out = torch::empty({1, nnz}, options);
+  if ((k % 2) == 0) {
+    SWITCH_REDUCEOP(reduce_op, REDUCE, {
+      sddmmCSR2Scale<REDUCE>
+          <<<dim3(nnz / 16 + (nnz & 15), 1, 1), dim3(16, 4, 1)>>>(
+              m, k, nnz, rowptr.data_ptr<int>(), colind.data_ptr<int>(),
+              D1.data_ptr<float>(), D2.data_ptr<float>(),
+              out.data_ptr<float>());
+    });
+  } else {
+    SWITCH_REDUCEOP(reduce_op, REDUCE, {
+      sddmmCSR1Scale<REDUCE>
+          <<<dim3(nnz / 16 + (nnz & 15), 1, 1), dim3(32, 4, 1)>>>(
+              m, k, nnz, rowptr.data_ptr<int>(), colind.data_ptr<int>(),
+              D1.data_ptr<float>(), D2.data_ptr<float>(),
+              out.data_ptr<float>());
+    });
+  }
+  return out;
+}
+
 std::vector<torch::Tensor> csr2csc_hip(
     torch::Tensor csrRowPtr,
     torch::Tensor csrColInd,
