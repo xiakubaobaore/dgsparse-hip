@@ -123,4 +123,52 @@ __global__ void csrspmm_seqreduce_rowbalance_kernel_without_template(
 //   }
 // }
 
+template <typename Index, typename DType, typename REDUCE, typename COMPUTE>
+__global__ void csrspmm_seqreduce_nnzbalance_kernel(
+    const Index nr, const Index feature_size, const Index nnz_,
+    const Index rowPtr[], const Index colIdx[], const DType values[],
+    const DType dnInput[], DType dnOutput[], Index E[]) {
+  Index nnz = nnz_;
+  if (nnz < 0)
+    nnz = rowPtr[nr];
+
+  Index Nnzdim_thread = blockDim.y * gridDim.x;
+  Index NE_PER_THREAD = CEIL(nnz, Nnzdim_thread);
+  Index eid = (blockIdx.x * blockDim.y + threadIdx.y) * NE_PER_THREAD;
+  Index v_id = (blockIdx.y * blockDim.x) + threadIdx.x;
+  Index col = 0;
+  DType val = 0.0;
+
+  if (v_id < feature_size) {
+    if (eid < nnz) {
+      Index row = binary_search_segment_number<Index>(rowPtr, nr, nnz, eid);
+      Index step = __ldg(rowPtr + row + 1) - eid;
+
+      for (Index ii = 0; ii < NE_PER_THREAD; ii++) {
+        if (eid >= nnz)
+          break;
+        if (ii < step) {
+          col = __ldg(colIdx + eid) * feature_size;
+          val += __guard_load_default_one<DType>(values, eid) *
+                 __ldg(dnInput + col + v_id);
+
+          eid++;
+        } else {
+          atomicAdd(&dnOutput[row * feature_size + v_id], val);
+
+          row = binary_search_segment_number<Index>(rowPtr, nr, nnz, eid);
+          step = __ldg(rowPtr + row + 1) - eid;
+          col = __ldg(colIdx + eid) * feature_size;
+          val = __guard_load_default_one<DType>(values, eid) *
+                __ldg(dnInput + col + v_id);
+
+          eid++;
+        }
+      }
+      // REDUCE::atomic_reduce(&dnOutput[row * feature_size + v_id], val);
+      atomicAdd(&dnOutput[row * feature_size + v_id], val);
+    }
+  }
+}
+
 #endif

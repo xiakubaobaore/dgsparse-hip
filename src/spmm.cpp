@@ -50,11 +50,10 @@ public:
          dense = saved[6];
 
     auto grad_value = torch::Tensor();
-    // if (has_value > 0 &&
-    //     torch::autograd::any_variable_requires_grad({values})) {
-    //   grad_value = sddmm_cuda_csr(rowptr, col, grad_out, dense,
-    //   REDUCEOP::SUM);
-    // }
+    if (has_value > 0 &&
+        torch::autograd::any_variable_requires_grad({values})) {
+      grad_value = sddmm_cuda_csr(rowptr, col, grad_out, dense, REDUCEOP::SUM);
+    }
 
     auto grad_mat = std::vector<torch::Tensor>();
     if (torch::autograd::any_variable_requires_grad({dense})) {

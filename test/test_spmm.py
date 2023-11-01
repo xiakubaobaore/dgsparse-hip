@@ -1,7 +1,7 @@
 import torch
 from dgsparse import spmm_sum
 from dgsparse import SparseTensor
-# import pytest
+import pytest
 from utils import GraphDataset
 
 
@@ -44,13 +44,10 @@ datasets = ['cora', 'citeseer', 'pubmed', 'ppi']
 features = [32, 64, 128]
 
 
+@pytest.mark.parametrize('dataset', datasets)
+@pytest.mark.parametrize('feat', features)
 def test_spmm_sum(dataset, feat):
     data = GraphDataset(dataset, 0)
     gc = SpMMSum(data, feat, 0, 0)
-    gc.forward_check()
-    # gc.backward_check()
-
-
-for data in datasets:
-    for feat in features:
-        test_spmm_sum(data, feat)
+    # gc.forward_check()
+    gc.backward_check()
