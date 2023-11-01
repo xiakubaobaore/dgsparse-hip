@@ -28,9 +28,81 @@
 
 #define CEIL(x, y) (((x) + (y)-1) / (y))
 
-#define FULLMASK 0xffffffff
 #define MIN(a, b) ((a < b) ? a : b)
 #define MAX(a, b) ((a < b) ? b : a)
+
+// hipDeviceProp_t props;
+// hipGetDeviceProperties(&props, 0);
+// const int warp_size = props.warpsize;
+#define warp_size 32
+
+#define SHFL_DOWN_REDUCE(v, temp_v, REDUCE, idx)                               \
+  switch (REDUCE) {                                                            \
+  case REDUCEOP::SUM:                                                          \
+  case REDUCEOP::MEAN:                                                         \
+    v += __shfl_down(v, 16, warp_size);                                        \
+    v += __shfl_down(v, 8, warp_size);                                         \
+    v += __shfl_down(v, 4, warp_size);                                         \
+    v += __shfl_down(v, 2, warp_size);                                         \
+    v += __shfl_down(v, 1, warp_size);                                         \
+    break;                                                                     \
+  case REDUCEOP::MAX:                                                          \
+    temp_v = __shfl_down(temp_v, 16, warp_size);                               \
+    if (temp_v > v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 16, warp_size);                                   \
+    }                                                                          \
+    temp_v = __shfl_down(temp_v, 8, warp_size);                                \
+    if (temp_v > v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 8, warp_size);                                    \
+    }                                                                          \
+    temp_v = __shfl_down(temp_v, 4, warp_size);                                \
+    if (temp_v > v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 4, warp_size);                                    \
+    }                                                                          \
+    temp_v = __shfl_down(temp_v, 2, warp_size);                                \
+    if (temp_v > v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 2, warp_size);                                    \
+    }                                                                          \
+    temp_v = __shfl_down(temp_v, 1, warp_size);                                \
+    if (temp_v > v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 1, warp_size);                                    \
+    }                                                                          \
+    break;                                                                     \
+  case REDUCEOP::MIN:                                                          \
+    temp_v = __shfl_down(temp_v, 16, warp_size);                               \
+    if (temp_v < v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 16, warp_size);                                   \
+    }                                                                          \
+    temp_v = __shfl_down(temp_v, 8, warp_size);                                \
+    if (temp_v < v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 8, warp_size);                                    \
+    }                                                                          \
+    temp_v = __shfl_down(temp_v, 4, warp_size);                                \
+    if (temp_v < v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 4, warp_size);                                    \
+    }                                                                          \
+    temp_v = __shfl_down(temp_v, 2, warp_size);                                \
+    if (temp_v < v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 2, warp_size);                                    \
+    }                                                                          \
+    temp_v = __shfl_down(temp_v, 1, warp_size);                                \
+    if (temp_v < v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 1, warp_size);                                    \
+    }                                                                          \
+    break;                                                                     \
+  default:                                                                     \
+    break;                                                                     \
+  };
 
 template <typename T>
 __device__ __forceinline__ T __guard_load_default_one(const T *base,
