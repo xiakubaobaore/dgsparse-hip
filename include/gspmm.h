@@ -134,9 +134,9 @@ __device__ __forceinline__ float init(REDUCEOP op) {
   case SUM:
     return 0;
   case MAX:
-    return INT_MIN;
+    return float(INT_MIN);
   case MIN:
-    return INT_MAX;
+    return float(INT_MAX);
   case MEAN:
     return 0;
   default:

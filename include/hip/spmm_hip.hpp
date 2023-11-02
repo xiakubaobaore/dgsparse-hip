@@ -314,14 +314,16 @@ Ndim_Residue:
 }
 
 template <typename Index, typename DType>
-__global__ void csrspmm_neighbor_group_kernel(
-    const Index edge_groups, const Index feature_size, const Index group_key[],
-    const Index group_row[], const Index colIdx[], const DType values[],
-    const DType dnInput[], DType dnOutput[], Index E[]) {
+__global__ void
+csrspmm_neighbor_group_kernel(const Index edge_groups, const Index feature_size,
+                              const Index group_key[], const Index group_row[],
+                              const Index colIdx[], const DType values[],
+                              const DType dnInput[], DType dnOutput[]) {
   Index group_tile = blockDim.y; // combine a set of groups together
   Index subwarp_id = threadIdx.y;
   Index group = blockIdx.x * group_tile + subwarp_id; // which node_group
   Index v_id = threadIdx.x;
+
   if (group < edge_groups) {
     Index row = group_row[group]; // get the specific row of each node group
     dnInput += v_id;

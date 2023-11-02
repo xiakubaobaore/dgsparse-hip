@@ -57,16 +57,34 @@ bool check_result(float *C_ref, float *C, int num){
         {
             printf("Result verification failed at element %d!\nC_ref[%d] = %f, C[%d] = %f\n", i, i, C_ref[i], i, C[i]);
             flag = false;
+            // return false;
         }
     }
     return flag;
 }
 
+void generate_group(int nrow, int group_size, std::vector<int> &csrptr,
+                    std::vector<int> &group_ptr,
+                    std::vector<int> &group_row){
+    group_ptr.push_back(0);
+    for (int rid = 0; rid < nrow; rid++) {
+        int A_lb = csrptr[rid];
+        int A_hb = csrptr[rid + 1];
+        int tmp_key = A_lb + group_size;
+        while (tmp_key <= A_hb) {
+            group_ptr.push_back(tmp_key);
+            group_row.push_back(rid);
+            tmp_key += group_size;
+        }
+        if (group_ptr.back() != A_hb) {
+            group_row.push_back(rid);
+            group_ptr.push_back(A_hb);
+        }
+    }
+}
 
-
-float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsity, method algorithm)
+float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, method algorithm)
 {
-    bool is_transpose = (algorithm == method::rocsparse) ? true : false;
     size_t size_A = size_m * size_k * sizeof(float);
     size_t size_B = size_n * size_k * sizeof(float);
     size_t size_C = size_m * size_n * sizeof(float);
@@ -103,16 +121,6 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
     size_t size_ptr = csrptr.size() * sizeof(int);
     size_t size_ind = csrind.size() * sizeof(int);
     size_t size_val = csrval.size() * sizeof(float);
-    int *rowptr = (int *)malloc(size_ptr);
-    int *rowind = (int *)malloc(size_ind);
-    float *value = (float *)malloc(size_val);
-    if (rowptr == NULL || rowind == NULL || value == NULL){
-        printf("malloc failed\n");
-        return false;
-    }
-    memcpy(rowptr, &csrptr[0], size_ptr);
-    memcpy(rowind, &csrind[0], size_ind);
-    memcpy(value, &csrval[0], size_val);
 
     //申请Device内存
     float *d_B = NULL;
@@ -135,9 +143,9 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
     checkHipError(hipMemcpy(d_B,h_B,size_B,hipMemcpyHostToDevice));
     checkHipError(hipMemcpy(d_B_trans,h_B_trans,size_B,hipMemcpyHostToDevice));
     checkHipError(hipMemcpy(d_E,E,size_m * size_n * sizeof(int),hipMemcpyHostToDevice));
-    checkHipError(hipMemcpy(d_ptr,rowptr,size_ptr,hipMemcpyHostToDevice));
-    checkHipError(hipMemcpy(d_ind,rowind,size_ind,hipMemcpyHostToDevice));
-    checkHipError(hipMemcpy(d_val,value,size_val,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_ptr,&csrptr[0],size_ptr,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_ind,&csrind[0],size_ind,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_val,&csrval[0],size_val,hipMemcpyHostToDevice));
 
     clock_t start, end;
     float time_elapsed;
@@ -156,13 +164,13 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
         rocsparse_set_mat_index_base(rdescr, rocsparse_index_base_zero);
 
         start = clock();
-        for(int circle = 0; circle < circle_num; ++circle){
+        for(int circle = 0; circle < iter; ++circle){
             rocsparse_scsrmm(rhandle, rocsparse_operation_none, rocsparse_operation_none,
                             size_m, size_n, size_k, csrval.size(), &alpha, rdescr,
                             d_val, d_ptr, d_ind, d_B_trans, size_k, &beta, d_C, size_m);
         }
         end = clock();
-        time_elapsed = (end - start) * 1.0/circle_num;
+        time_elapsed = (end - start) * 1.0/iter;
         printf("rocsparse kernel time = %fms\n", time_elapsed);
 
         rocsparse_destroy_handle(rhandle);
@@ -177,7 +185,7 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
         // hipsparseSetMatType(descr, HIPSPARSE_MATRIX_TYPE_GENERAL);
         // hipsparseSetMatIndexBase(descr, HIPSPARSE_INDEX_BASE_ZERO);
         // start = clock();
-        // for(int circle = 0; circle < circle_num; ++circle){
+        // for(int circle = 0; circle < iter; ++circle){
         //     hipsparseScsrmm(
         //         handle, HIPSPARSE_OPERATION_NON_TRANSPOSE,
         //         size_m, size_n, size_k, csrval.size(), &alpha, descr,
@@ -187,7 +195,7 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
         //     );
         // }
         // end = clock();
-        // time_elapsed = (end - start) * 1.0/circle_num;
+        // time_elapsed = (end - start) * 1.0/iter;
         // printf("hipsparse kernel time = %fms\n", time_elapsed);
         // hipsparseDestroy(handle);
         // hipsparseDestroyMatDescr(descr);
@@ -206,7 +214,7 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
         dim3 blockDim(Ndim_thread_per_tb, Mdim_thread_per_tb, 1);
 
         start = clock();
-        for(int circle = 0; circle < circle_num; ++circle){
+        for(int circle = 0; circle < iter; ++circle){
             SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
                 SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
                     csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>
@@ -217,7 +225,7 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
             });
         }
         end = clock();
-        time_elapsed = (end - start) * 1.0/circle_num;
+        time_elapsed = (end - start) * 1.0/iter;
         printf("dgsparse_0 kernel time = %fms\n", time_elapsed);
     }
     else if(algorithm == method::dgsparse_1){
@@ -234,7 +242,7 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
         dim3 blockDim(Ndim_thread_per_tb, Mdim_thread_per_tb, 1);
 
         start = clock();
-        for(int circle = 0; circle < circle_num; ++circle){
+        for(int circle = 0; circle < iter; ++circle){
             SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
                 SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
                     csrspmm_seqreduce_nnzbalance_kernel<int, float, REDUCE, COMPUTE>
@@ -245,7 +253,7 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
             });
         }
         end = clock();
-        time_elapsed = (end - start) * 1.0/circle_num;
+        time_elapsed = (end - start) * 1.0/iter;
         printf("dgsparse_1 kernel time = %fms\n", time_elapsed);
     }
     else if(algorithm == method::dgsparse_2){
@@ -268,7 +276,7 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
 
         if (coarsen_factor == 4){
             start = clock();
-            for(int circle = 0; circle < circle_num; ++circle){
+            for(int circle = 0; circle < iter; ++circle){
                 SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
                     SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
                         csrspmm_parreduce_rowbalance_kernel<int, float, float4, REDUCE,
@@ -279,12 +287,12 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
                 });
             }
             end = clock();
-            time_elapsed = (end - start) * 1.0/circle_num;
+            time_elapsed = (end - start) * 1.0/iter;
             printf("dgsparse_2 kernel time = %fms\n", time_elapsed);
         }
         else if (coarsen_factor == 2){
             start = clock();
-            for(int circle = 0; circle < circle_num; ++circle){
+            for(int circle = 0; circle < iter; ++circle){
                 SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
                     SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
                         csrspmm_parreduce_rowbalance_kernel<int, float, float2, REDUCE,
@@ -295,12 +303,12 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
                 });
             }
             end = clock();
-            time_elapsed = (end - start) * 1.0/circle_num;
+            time_elapsed = (end - start) * 1.0/iter;
             printf("dgsparse_2 kernel time = %fms\n", time_elapsed);
         }
         else {
             start = clock();
-            for(int circle = 0; circle < circle_num; ++circle){
+            for(int circle = 0; circle < iter; ++circle){
                 SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
                     SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
                         csrspmm_parreduce_rowbalance_kernel<int, float, float, REDUCE,
@@ -311,7 +319,7 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
                 });
             }
             end = clock();
-            time_elapsed = (end - start) * 1.0/circle_num;
+            time_elapsed = (end - start) * 1.0/iter;
             printf("dgsparse_2 kernel time = %fms\n", time_elapsed);
         }
     }
@@ -329,9 +337,6 @@ float spmm_time(int size_m, int size_k, int size_n, int circle_num, float sparsi
     free(h_B);
     free(h_B_trans);
     free(E);
-    free(rowptr);
-    free(rowind);
-    free(value);
 
     csrptr.clear();csrptr.shrink_to_fit();
     csrind.clear();csrind.shrink_to_fit();
@@ -382,16 +387,6 @@ bool spmm_check(int size_m, int size_k, int size_n, method algorithm)
     size_t size_ptr = csrptr.size() * sizeof(int);
     size_t size_ind = csrind.size() * sizeof(int);
     size_t size_val = csrval.size() * sizeof(float);
-    int *rowptr = (int *)malloc(size_ptr);
-    int *rowind = (int *)malloc(size_ind);
-    float *value = (float *)malloc(size_val);
-    if (rowptr == NULL || rowind == NULL || value == NULL){
-        printf("malloc failed\n");
-        return false;
-    }
-    memcpy(rowptr, &csrptr[0], size_ptr);
-    memcpy(rowind, &csrind[0], size_ind);
-    memcpy(value, &csrval[0], size_val);
 
     //申请Device内存
     float *d_B = NULL;
@@ -414,9 +409,9 @@ bool spmm_check(int size_m, int size_k, int size_n, method algorithm)
     checkHipError(hipMemcpy(d_B,h_B,size_B,hipMemcpyHostToDevice));
     checkHipError(hipMemcpy(d_B_trans,h_B_trans,size_B,hipMemcpyHostToDevice));
     checkHipError(hipMemcpy(d_E,E,size_m * size_n * sizeof(int),hipMemcpyHostToDevice));
-    checkHipError(hipMemcpy(d_ptr,rowptr,size_ptr,hipMemcpyHostToDevice));
-    checkHipError(hipMemcpy(d_ind,rowind,size_ind,hipMemcpyHostToDevice));
-    checkHipError(hipMemcpy(d_val,value,size_val,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_ptr,&csrptr[0],size_ptr,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_ind,&csrind[0],size_ind,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_val,&csrval[0],size_val,hipMemcpyHostToDevice));
 
     //调用kernel
     if (algorithm == method::rocsparse){
@@ -598,13 +593,242 @@ bool spmm_check(int size_m, int size_k, int size_n, method algorithm)
     free(h_C);
     free(E);
     free(h_ref);
-    free(rowptr);
-    free(rowind);
-    free(value);
 
     csrptr.clear();csrptr.shrink_to_fit();
     csrind.clear();csrind.shrink_to_fit();
     csrval.clear();csrval.shrink_to_fit();
+    return flag;
+}
+
+float spmm_group_time(int size_m, int size_k, int size_n, int iter, float sparsity)
+{
+    size_t size_A = size_m * size_k * sizeof(float);
+    size_t size_B = size_n * size_k * sizeof(float);
+    size_t size_C = size_m * size_n * sizeof(float);
+    printf("[Spmm of %d*%d*%d elements]\n", size_m, size_k, size_n);
+
+    //申请Host内存并初始化
+    float *h_A = (float *)malloc(size_A);
+    float *h_B = (float *)malloc(size_B);
+
+    if (h_A == NULL || h_B == NULL){
+        printf ("malloc failed\n");
+        return false;
+    }
+    init_random_sparse(h_A, size_m*size_k, sparsity);
+    init_random(h_B, size_k*size_n);
+
+    std::vector<int> csrptr, csrind, group_ptr, group_row;
+    std::vector<float> csrval;
+    csrptr.push_back(0);
+    for(int row=0;row < size_m;++row){
+        for(int col=0;col < size_k;++col){
+            int id = row*size_k+col;
+            if(h_A[id] != 0){
+                csrind.push_back(col);
+                csrval.push_back(h_A[id]);
+            }
+        }
+        csrptr.push_back(csrind.size());
+    }
+
+    generate_group(size_m, 4, csrptr, group_ptr, group_row);
+
+    size_t size_ind = csrind.size() * sizeof(int);
+    size_t size_val = csrval.size() * sizeof(float);
+    size_t size_groupptr = group_ptr.size() * sizeof(int);
+    size_t size_grouprow = group_row.size() * sizeof(int);
+
+    //申请Device内存
+    float *d_B = NULL;
+    checkHipError(hipMalloc((void **)&d_B, size_B));
+    float *d_C = NULL;
+    checkHipError(hipMalloc((void **)&d_C, size_C));
+    hipMemset((void *)d_C, 0, size_C);
+    int *d_groupptr = NULL;
+    checkHipError(hipMalloc((void **)&d_groupptr, size_groupptr));
+    int *d_grouprow = NULL;
+    checkHipError(hipMalloc((void **)&d_grouprow, size_grouprow));
+    int *d_ind = NULL;
+    checkHipError(hipMalloc((void **)&d_ind, size_ind));
+    float *d_val = NULL;
+    checkHipError(hipMalloc((void **)&d_val, size_val));
+
+    //从Host端提交到Device端
+    checkHipError(hipMemcpy(d_B,h_B,size_B,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_groupptr,&group_ptr[0],size_groupptr,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_grouprow,&group_row[0],size_grouprow,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_ind,&csrind[0],size_ind,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_val,&csrval[0],size_val,hipMemcpyHostToDevice));
+
+    for (int i = 0; i < 1000; i++)
+        warm_up<<<1, 1>>>();
+
+    int Mdim_worker = group_row.size();
+    int Ndim_worker = size_n;
+
+    int RefThreadPerBlock = Ndim_worker > 256 ? Ndim_worker : 256;
+    int Ndim_threadblock = CEIL(Ndim_worker, RefThreadPerBlock);
+    int Ndim_thread_per_tb = min(Ndim_worker, RefThreadPerBlock);
+    int Mdim_thread_per_tb = CEIL(RefThreadPerBlock, Ndim_thread_per_tb);
+    int Mdim_threadblock = CEIL(Mdim_worker, Mdim_thread_per_tb);
+
+    dim3 gridDim(Mdim_threadblock, Ndim_threadblock, 1);
+    dim3 blockDim(Ndim_thread_per_tb, Mdim_thread_per_tb, 1);
+
+    clock_t start, end;
+    start = clock();
+    for(int i = 0; i < iter; ++i){
+        csrspmm_neighbor_group_kernel<int, float>
+            <<<gridDim, blockDim>>>(
+                Mdim_worker, Ndim_worker, d_groupptr, d_grouprow,
+                d_ind, d_val, d_B, d_C);
+    }
+    end = clock();
+    float time_elapsed = (end - start) * 1.0/iter;
+    printf("dgsparse_group kernel time = %fms\n", time_elapsed);
+
+    checkHipError(hipDeviceSynchronize());
+
+    // 释放内存
+    hipFree(d_B);
+    hipFree(d_C);
+    hipFree(d_groupptr);
+    hipFree(d_grouprow);
+    hipFree(d_ind);
+    hipFree(d_val);
+    free(h_A);
+    free(h_B);
+
+    csrptr.clear();csrptr.shrink_to_fit();
+    csrind.clear();csrind.shrink_to_fit();
+    csrval.clear();csrval.shrink_to_fit();
+    group_ptr.clear();group_ptr.shrink_to_fit();
+    group_row.clear();group_row.shrink_to_fit();
+
+    return time_elapsed;
+}
+
+bool spmm_check_group(int size_m, int size_k, int size_n)
+{
+    size_t size_A = size_m * size_k * sizeof(float);
+    size_t size_B = size_n * size_k * sizeof(float);
+    size_t size_C = size_m * size_n * sizeof(float);
+    printf("[Spmm of %d*%d*%d elements]\n", size_m, size_k, size_n);
+
+    //申请Host内存并初始化
+    float *h_A = (float *)malloc(size_A);
+    float *h_B = (float *)malloc(size_B);
+    float *h_C = (float *)malloc(size_C);
+
+    float *h_ref = (float *)malloc(size_C); //参考结果
+
+    if (h_A == NULL || h_B == NULL || h_C == NULL || h_ref == NULL){
+        printf ("malloc failed\n");
+        return false;
+    }
+    init_random_sparse(h_A, size_m*size_k, 0.01);
+    init_random(h_B, size_k*size_n);
+
+    std::vector<int> csrptr, csrind, group_ptr, group_row;
+    std::vector<float> csrval;
+    csrptr.push_back(0);
+    for(int row=0;row < size_m;++row){
+        for(int col=0;col < size_k;++col){
+            int id = row*size_k+col;
+            if(h_A[id] != 0){
+                csrind.push_back(col);
+                csrval.push_back(h_A[id]);
+            }
+        }
+        csrptr.push_back(csrind.size());
+    }
+
+    generate_group(size_m, 4, csrptr, group_ptr, group_row);
+
+    size_t size_ind = csrind.size() * sizeof(int);
+    size_t size_val = csrval.size() * sizeof(float);
+    size_t size_groupptr = group_ptr.size() * sizeof(int);
+    size_t size_grouprow = group_row.size() * sizeof(int);
+
+    //申请Device内存
+    float *d_B = NULL;
+    checkHipError(hipMalloc((void **)&d_B, size_B));
+    float *d_C = NULL;
+    checkHipError(hipMalloc((void **)&d_C, size_C));
+    hipMemset((void *)d_C, 0, size_C);
+    int *d_groupptr = NULL;
+    checkHipError(hipMalloc((void **)&d_groupptr, size_groupptr));
+    int *d_grouprow = NULL;
+    checkHipError(hipMalloc((void **)&d_grouprow, size_grouprow));
+    int *d_ind = NULL;
+    checkHipError(hipMalloc((void **)&d_ind, size_ind));
+    float *d_val = NULL;
+    checkHipError(hipMalloc((void **)&d_val, size_val));
+
+    //从Host端提交到Device端
+    checkHipError(hipMemcpy(d_B,h_B,size_B,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_groupptr,&group_ptr[0],size_groupptr,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_grouprow,&group_row[0],size_grouprow,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_ind,&csrind[0],size_ind,hipMemcpyHostToDevice));
+    checkHipError(hipMemcpy(d_val,&csrval[0],size_val,hipMemcpyHostToDevice));
+
+    int Mdim_worker = group_row.size();
+    int Ndim_worker = size_n;
+
+    int RefThreadPerBlock = Ndim_worker > 256 ? Ndim_worker : 256;
+    int Ndim_threadblock = CEIL(Ndim_worker, RefThreadPerBlock);
+    int Ndim_thread_per_tb = min(Ndim_worker, RefThreadPerBlock);
+    int Mdim_thread_per_tb = CEIL(RefThreadPerBlock, Ndim_thread_per_tb);
+    int Mdim_threadblock = CEIL(Mdim_worker, Mdim_thread_per_tb);
+
+    dim3 gridDim(Mdim_threadblock, Ndim_threadblock, 1);
+    dim3 blockDim(Ndim_thread_per_tb, Mdim_thread_per_tb, 1);
+
+    csrspmm_neighbor_group_kernel<int, float>
+        <<<gridDim, blockDim>>>(
+            Mdim_worker, Ndim_worker, d_groupptr, d_grouprow,
+            d_ind, d_val, d_B, d_C);
+
+    //CPU计算
+    for(int row = 0; row<size_m;row++){
+        for(int col = 0; col<size_n;col++){
+            int id = row*size_n+col;
+            h_ref[id]=0;
+            for(int k = 0; k<size_k;k++){
+                h_ref[id] += h_A[row * size_k + k] * h_B[k * size_n + col];
+            }
+        }
+    }
+    //将结果从Device端传回Host端
+    checkHipError(hipMemcpy(h_C,d_C,size_C,hipMemcpyDeviceToHost));
+    checkHipError(hipDeviceSynchronize());
+
+    bool flag = false;
+    if(check_result(h_ref, h_C, size_m * size_n)){
+        printf("###########spmm group check pass!#############\n");
+        flag = true;
+    }
+
+
+    // 释放内存
+    hipFree(d_B);
+    hipFree(d_C);
+    hipFree(d_groupptr);
+    hipFree(d_grouprow);
+    hipFree(d_ind);
+    hipFree(d_val);
+    free(h_A);
+    free(h_B);
+    free(h_C);
+    free(h_ref);
+
+    csrptr.clear();csrptr.shrink_to_fit();
+    csrind.clear();csrind.shrink_to_fit();
+    csrval.clear();csrval.shrink_to_fit();
+    group_ptr.clear();group_ptr.shrink_to_fit();
+    group_row.clear();group_row.shrink_to_fit();
+
     return flag;
 }
 
@@ -615,30 +839,36 @@ int main(int argc,char **argv)
     spmm_check(1000, 1000, 128, method::rocsparse);
     spmm_check(1000, 1000, 128, method::dgsparse_1);
     spmm_check(1000, 1000, 128, method::dgsparse_2);
+    spmm_check_group(1000, 1000, 128);
+
     int size_m[4]={1000, 5000, 10000};
     int size_k[4]={1000, 5000, 10000};
     int size_n[3]={32,64,128};
 
-    float speedup_0 = 0, speedup_1 = 0, speedup_2 = 0;
-    float time_ref, time_0, time_1, time_2;
+    float speedup_0 = 0, speedup_1 = 0, speedup_2 = 0, speedup_group = 0;
+    float time_ref, time_0, time_1, time_2, time_group;
     for(int i=0;i<3;++i){
         for(int j=0;j<3;++j){
             for(int k=0;k<3;++k){
                 time_0 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_0);
                 time_1 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_1);
                 time_2 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_2);
+                time_group = spmm_group_time(size_m[i], size_k[j], size_n[k], 300, 0.01);
                 time_ref = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::rocsparse);
                 speedup_0 += time_ref/time_0;
                 speedup_1 += time_ref/time_1;
                 speedup_2 += time_ref/time_2;
+                speedup_group += time_ref/time_group;
             }
         }
     }
     speedup_0 /= 27;
     speedup_1 /= 27;
     speedup_2 /= 27;
+    speedup_group /= 27;
     printf("average_speedup_0 = %f\n", speedup_0);
     printf("average_speedup_1 = %f\n", speedup_1);
     printf("average_speedup_2 = %f\n", speedup_2);
+    printf("average_speedup_group = %f\n", speedup_group);
     return 0;
 }
