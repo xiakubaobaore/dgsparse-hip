@@ -15,7 +15,8 @@ enum method{
     rocsparse = 0,
     dgsparse_0,
     dgsparse_1,
-    dgsparse_2
+    dgsparse_2,
+    dgsparse_3
 };
 
 __global__ void warm_up() {}
@@ -263,16 +264,16 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
         // partition large-N and map to blockdim.y to help cache performance
         int RefThreadPerBlock = 256;
 
-        int Ndim_threadblock = CEIL(Ndim_worker, 32);
-        int Ndim_warp_per_tb = min(Ndim_worker, 32) / coarsen_factor;
-        int ref_warp_per_tb = RefThreadPerBlock / 32;
+        int Ndim_threadblock = CEIL(Ndim_worker, WARP_SIZE);
+        int Ndim_warp_per_tb = min(Ndim_worker, WARP_SIZE) / coarsen_factor;
+        int ref_warp_per_tb = RefThreadPerBlock / WARP_SIZE;
         int Mdim_warp_per_tb = CEIL(ref_warp_per_tb, Ndim_warp_per_tb);
 
         int gridDimX = CEIL(Mdim_worker, Mdim_warp_per_tb);
         int gridDimY = Ndim_threadblock;
 
         dim3 gridDim(gridDimX, gridDimY, 1);
-        dim3 blockDim(Ndim_warp_per_tb * 32, Mdim_warp_per_tb, 1);
+        dim3 blockDim(Ndim_warp_per_tb * WARP_SIZE, Mdim_warp_per_tb, 1);
 
         if (coarsen_factor == 4){
             start = clock();
@@ -321,6 +322,49 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
         }
         printf(" dgsparse_2 = %.3fms", time_elapsed);
     }
+    else if(algorithm == method::dgsparse_3){
+        int Ndim_worker = size_n;
+        // factor of thread coarsening
+        int coarsen_factor = (Ndim_worker % 4 == 0) ? 4 : (Ndim_worker % 2 == 0) ? 2 : 1;
+        // number of parallel warps along M-dimension
+        const int segreduce_size_per_warp = WARP_SIZE;
+        int Nnzdim_worker = csrval.size(); // CEIL(spmatA.nnz, segreduce_size_per_warp);
+        // partition large-N and map to blockdim.y to help cache performance
+        int Ndim_threadblock = CEIL(Ndim_worker, WARP_SIZE);
+        int Ndim_warp_per_tb = min(Ndim_worker, WARP_SIZE) / coarsen_factor;
+        // int Ndim_warp_per_tb = min(N, WARP_SIZE)
+
+        int RefThreadPerBlock = 256;
+        int ref_warp_per_tb = RefThreadPerBlock / WARP_SIZE;
+        int Nnzdim_warp_per_tb = CEIL(ref_warp_per_tb, Ndim_warp_per_tb);
+
+        // total number of warps
+        int gridDimX = CEIL(Nnzdim_worker, Nnzdim_warp_per_tb);
+        int gridDimY = Ndim_threadblock;
+        dim3 gridDim(gridDimX, gridDimY, 1);
+        dim3 blockDim(Ndim_warp_per_tb * WARP_SIZE, Nnzdim_warp_per_tb, 1);
+
+        start = clock();
+        for(int circle = 0; circle < iter; ++circle){
+            if (coarsen_factor == 4) {
+                csrspmm_parreduce_nnzbalance_kernel<int,float,float4><<<gridDim,
+                blockDim>>>(
+                    size_m, Ndim_worker, Nnzdim_worker, d_ptr, d_ind, d_val, d_B, d_C);
+            } else if (coarsen_factor == 2) {
+                csrspmm_parreduce_nnzbalance_kernel<int,float,float2><<<gridDim,
+                blockDim>>>(
+                    size_m, Ndim_worker, Nnzdim_worker, d_ptr, d_ind, d_val, d_B, d_C);
+            } else {
+                csrspmm_parreduce_nnzbalance_kernel<int,float,float><<<gridDim,
+                blockDim>>>(
+                    size_m, Ndim_worker, Nnzdim_worker, d_ptr, d_ind, d_val, d_B, d_C);
+            }
+        }
+        end = clock();
+        time_elapsed = (end - start) * 1.0/iter;
+        printf(" dgsparse_3 = %.3fms", time_elapsed);
+    }
+
     checkHipError(hipDeviceSynchronize());
 
     // 释放内存
@@ -448,8 +492,7 @@ bool spmm_check(int size_m, int size_k, int size_n, method algorithm)
 
         // hipsparseDestroy(handle);
         // hipsparseDestroyMatDescr(descr);
-    }else{
-        if(algorithm == method::dgsparse_0){
+    }else if(algorithm == method::dgsparse_0){
             int Mdim_worker = size_m;
             int Ndim_worker = size_n;
 
@@ -470,77 +513,112 @@ bool spmm_check(int size_m, int size_k, int size_n, method algorithm)
                             d_B, d_C, d_E);
                 });
             });
-        }
-        else if(algorithm == method::dgsparse_1){
-            int Mdim_worker = size_m;
-            int Ndim_worker = size_n;
+    }
+    else if(algorithm == method::dgsparse_1){
+        int Mdim_worker = size_m;
+        int Ndim_worker = size_n;
 
-            int RefThreadPerBlock = 256;
-            int Ndim_threadblock = CEIL(Ndim_worker, RefThreadPerBlock);
-            int Ndim_thread_per_tb = min(Ndim_worker, RefThreadPerBlock);
-            int Mdim_thread_per_tb = CEIL(RefThreadPerBlock, Ndim_thread_per_tb);
-            int Mdim_threadblock = CEIL(Mdim_worker, Mdim_thread_per_tb);
+        int RefThreadPerBlock = 256;
+        int Ndim_threadblock = CEIL(Ndim_worker, RefThreadPerBlock);
+        int Ndim_thread_per_tb = min(Ndim_worker, RefThreadPerBlock);
+        int Mdim_thread_per_tb = CEIL(RefThreadPerBlock, Ndim_thread_per_tb);
+        int Mdim_threadblock = CEIL(Mdim_worker, Mdim_thread_per_tb);
 
-            dim3 gridDim(Mdim_threadblock, Ndim_threadblock, 1);
-            dim3 blockDim(Ndim_thread_per_tb, Mdim_thread_per_tb, 1);
+        dim3 gridDim(Mdim_threadblock, Ndim_threadblock, 1);
+        dim3 blockDim(Ndim_thread_per_tb, Mdim_thread_per_tb, 1);
 
+        SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
+            SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
+                csrspmm_seqreduce_nnzbalance_kernel<int, float, REDUCE, COMPUTE>
+                    <<<gridDim, blockDim>>>(
+                        Mdim_worker, Ndim_worker, csrval.size(), d_ptr, d_ind, d_val,
+                        d_B, d_C, d_E);
+            });
+        });
+    }
+    else if(algorithm == method::dgsparse_2){
+        int Mdim_worker = size_m;
+        int Ndim_worker = size_n;
+        int coarsen_factor = (Ndim_worker % 4 == 0) ? 4 : (Ndim_worker % 2 == 0) ? 2 : 1;
+        // partition large-N and map to blockdim.y to help cache performance
+        int RefThreadPerBlock = 256;
+
+        int Ndim_threadblock = CEIL(Ndim_worker, WARP_SIZE);
+        int Ndim_warp_per_tb = min(Ndim_worker, WARP_SIZE) / coarsen_factor;
+        int ref_warp_per_tb = RefThreadPerBlock / WARP_SIZE;
+        int Mdim_warp_per_tb = CEIL(ref_warp_per_tb, Ndim_warp_per_tb);
+
+        int gridDimX = CEIL(Mdim_worker, Mdim_warp_per_tb);
+        int gridDimY = Ndim_threadblock;
+
+        dim3 gridDim(gridDimX, gridDimY, 1);
+        dim3 blockDim(Ndim_warp_per_tb * WARP_SIZE, Mdim_warp_per_tb, 1);
+
+        if (coarsen_factor == 4){
             SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
                 SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
-                    csrspmm_seqreduce_nnzbalance_kernel<int, float, REDUCE, COMPUTE>
-                        <<<gridDim, blockDim>>>(
-                            Mdim_worker, Ndim_worker, csrval.size(), d_ptr, d_ind, d_val,
+                    csrspmm_parreduce_rowbalance_kernel<int, float, float4, REDUCE,
+                                                    COMPUTE><<<gridDim, blockDim>>>(
+                            Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
                             d_B, d_C, d_E);
                 });
             });
         }
-        else if(algorithm == method::dgsparse_2){
-            int Mdim_worker = size_m;
-            int Ndim_worker = size_n;
-            int coarsen_factor = (Ndim_worker % 4 == 0) ? 4 : (Ndim_worker % 2 == 0) ? 2 : 1;
-            // partition large-N and map to blockdim.y to help cache performance
-            int RefThreadPerBlock = 256;
-
-            int Ndim_threadblock = CEIL(Ndim_worker, 32);
-            int Ndim_warp_per_tb = min(Ndim_worker, 32) / coarsen_factor;
-            int ref_warp_per_tb = RefThreadPerBlock / 32;
-            int Mdim_warp_per_tb = CEIL(ref_warp_per_tb, Ndim_warp_per_tb);
-
-            int gridDimX = CEIL(Mdim_worker, Mdim_warp_per_tb);
-            int gridDimY = Ndim_threadblock;
-
-            dim3 gridDim(gridDimX, gridDimY, 1);
-            dim3 blockDim(Ndim_warp_per_tb * 32, Mdim_warp_per_tb, 1);
-
-            if (coarsen_factor == 4){
-                SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
-                    SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
-                        csrspmm_parreduce_rowbalance_kernel<int, float, float4, REDUCE,
-                                                        COMPUTE><<<gridDim, blockDim>>>(
-                                Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
-                                d_B, d_C, d_E);
-                    });
+        if (coarsen_factor == 2){
+            SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
+                SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
+                    csrspmm_parreduce_rowbalance_kernel<int, float, float2, REDUCE,
+                                                    COMPUTE><<<gridDim, blockDim>>>(
+                            Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
+                            d_B, d_C, d_E);
                 });
-            }
-            if (coarsen_factor == 2){
-                SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
-                    SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
-                        csrspmm_parreduce_rowbalance_kernel<int, float, float2, REDUCE,
-                                                        COMPUTE><<<gridDim, blockDim>>>(
-                                Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
-                                d_B, d_C, d_E);
-                    });
+            });
+        }
+        else {
+            SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
+                SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
+                    csrspmm_parreduce_rowbalance_kernel<int, float, float, REDUCE,
+                                                    COMPUTE><<<gridDim, blockDim>>>(
+                            Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
+                            d_B, d_C, d_E);
                 });
-            }
-            else {
-                SWITCH_REDUCEOP(REDUCEOP::SUM, REDUCE, {
-                    SWITCH_COMPUTEOP(COMPUTEOP::ADD, COMPUTE, {
-                        csrspmm_parreduce_rowbalance_kernel<int, float, float, REDUCE,
-                                                        COMPUTE><<<gridDim, blockDim>>>(
-                                Mdim_worker, Ndim_worker, d_ptr, d_ind, d_val,
-                                d_B, d_C, d_E);
-                    });
-                });
-            }
+            });
+        }
+    }
+    else if(algorithm == method::dgsparse_3){
+        int Ndim_worker = size_n;
+        // factor of thread coarsening
+        int coarsen_factor = (Ndim_worker % 4 == 0) ? 4 : (Ndim_worker % 2 == 0) ? 2 : 1;
+        // number of parallel warps along M-dimension
+        const int segreduce_size_per_warp = WARP_SIZE;
+        int Nnzdim_worker = csrval.size(); // CEIL(spmatA.nnz, segreduce_size_per_warp);
+        // partition large-N and map to blockdim.y to help cache performance
+        int Ndim_threadblock = CEIL(Ndim_worker, WARP_SIZE);
+        int Ndim_warp_per_tb = min(Ndim_worker, WARP_SIZE) / coarsen_factor;
+        // int Ndim_warp_per_tb = min(N, WARP_SIZE)
+
+        int RefThreadPerBlock = 256;
+        int ref_warp_per_tb = RefThreadPerBlock / WARP_SIZE;
+        int Nnzdim_warp_per_tb = CEIL(ref_warp_per_tb, Ndim_warp_per_tb);
+
+        // total number of warps
+        int gridDimX = CEIL(Nnzdim_worker, Nnzdim_warp_per_tb);
+        int gridDimY = Ndim_threadblock;
+        dim3 gridDim(gridDimX, gridDimY, 1);
+        dim3 blockDim(Ndim_warp_per_tb * WARP_SIZE, Nnzdim_warp_per_tb, 1);
+
+        if (coarsen_factor == 4) {
+            csrspmm_parreduce_nnzbalance_kernel<int,float,float4><<<gridDim,
+            blockDim>>>(
+                size_m, Ndim_worker, Nnzdim_worker, d_ptr, d_ind, d_val, d_B, d_C);
+        } else if (coarsen_factor == 2) {
+            csrspmm_parreduce_nnzbalance_kernel<int,float,float2><<<gridDim,
+            blockDim>>>(
+                size_m, Ndim_worker, Nnzdim_worker, d_ptr, d_ind, d_val, d_B, d_C);
+        } else {
+            csrspmm_parreduce_nnzbalance_kernel<int,float,float><<<gridDim,
+            blockDim>>>(
+                size_m, Ndim_worker, Nnzdim_worker, d_ptr, d_ind, d_val, d_B, d_C);
         }
     }
 
@@ -707,7 +785,7 @@ float spmm_group_time(int size_m, int size_k, int size_n, int iter, float sparsi
     return time_elapsed;
 }
 
-bool spmm_check_group(int size_m, int size_k, int size_n)
+bool spmm_group_check(int size_m, int size_k, int size_n)
 {
     size_t size_A = size_m * size_k * sizeof(float);
     size_t size_B = size_n * size_k * sizeof(float);
@@ -837,27 +915,30 @@ int main(int argc,char **argv)
     spmm_check(1000, 1000, 128, method::rocsparse);
     spmm_check(1000, 1000, 128, method::dgsparse_1);
     spmm_check(1000, 1000, 128, method::dgsparse_2);
-    spmm_check_group(1000, 1000, 128);
+    spmm_check(1000, 1000, 128, method::dgsparse_3);
+    spmm_group_check(1000, 1000, 128);
 
     int size_m[4]={1000, 5000, 10000};
     int size_k[4]={1000, 5000, 10000};
-    int size_n[3]={32,64,128};
+    int size_n[3]={WARP_SIZE,64,128};
 
-    float speedup_0 = 0, speedup_1 = 0, speedup_2 = 0, speedup_group = 0;
-    float time_ref, time_0, time_1, time_2, time_group;
+    float speedup_0 = 0, speedup_1 = 0, speedup_2 = 0, speedup_3 = 0, speedup_group = 0;
+    float time_ref, time_0, time_1, time_2, time_3, time_group;
     for(int i=0;i<3;++i){
         for(int j=0;j<3;++j){
             for(int k=0;k<3;++k){
-                printf("[Spmm of %d*%d*%d]", size_m[i], size_k[i], size_n[i]);
+                printf("[Spmm of %d*%d*%d]", size_m[i], size_k[j], size_n[k]);
                 time_0 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_0);
                 time_1 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_1);
                 time_2 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_2);
+                time_3 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_3);
                 time_group = spmm_group_time(size_m[i], size_k[j], size_n[k], 300, 0.01);
                 time_ref = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::rocsparse);
                 printf("\n");
                 speedup_0 += time_ref/time_0;
                 speedup_1 += time_ref/time_1;
                 speedup_2 += time_ref/time_2;
+                speedup_3 += time_ref/time_3;
                 speedup_group += time_ref/time_group;
             }
         }
@@ -865,10 +946,12 @@ int main(int argc,char **argv)
     speedup_0 /= 27;
     speedup_1 /= 27;
     speedup_2 /= 27;
+    speedup_3 /= 27;
     speedup_group /= 27;
     printf("average_speedup_0 = %.3f\n", speedup_0);
     printf("average_speedup_1 = %.3f\n", speedup_1);
     printf("average_speedup_2 = %.3f\n", speedup_2);
+    printf("average_speedup_3 = %.3f\n", speedup_3);
     printf("average_speedup_group = %.3f\n", speedup_group);
     return 0;
 }

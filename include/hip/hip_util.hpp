@@ -33,71 +33,71 @@
 
 // hipDeviceProp_t props;
 // hipGetDeviceProperties(&props, 0);
-// const int warp_size = props.warpsize;
-#define warp_size 32
+// const int WARP_SIZE = props.warpsize;
+#define WARP_SIZE 32
 
 #define SHFL_DOWN_REDUCE(v, temp_v, REDUCE, idx)                               \
   switch (REDUCE) {                                                            \
   case REDUCEOP::SUM:                                                          \
   case REDUCEOP::MEAN:                                                         \
-    v += __shfl_down(v, 16, warp_size);                                        \
-    v += __shfl_down(v, 8, warp_size);                                         \
-    v += __shfl_down(v, 4, warp_size);                                         \
-    v += __shfl_down(v, 2, warp_size);                                         \
-    v += __shfl_down(v, 1, warp_size);                                         \
+    v += __shfl_down(v, 16, WARP_SIZE);                                        \
+    v += __shfl_down(v, 8, WARP_SIZE);                                         \
+    v += __shfl_down(v, 4, WARP_SIZE);                                         \
+    v += __shfl_down(v, 2, WARP_SIZE);                                         \
+    v += __shfl_down(v, 1, WARP_SIZE);                                         \
     break;                                                                     \
   case REDUCEOP::MAX:                                                          \
-    temp_v = __shfl_down(temp_v, 16, warp_size);                               \
+    temp_v = __shfl_down(temp_v, 16, WARP_SIZE);                               \
     if (temp_v > v) {                                                          \
       v = temp_v;                                                              \
-      idx = __shfl_down(idx, 16, warp_size);                                   \
+      idx = __shfl_down(idx, 16, WARP_SIZE);                                   \
     }                                                                          \
-    temp_v = __shfl_down(temp_v, 8, warp_size);                                \
+    temp_v = __shfl_down(temp_v, 8, WARP_SIZE);                                \
     if (temp_v > v) {                                                          \
       v = temp_v;                                                              \
-      idx = __shfl_down(idx, 8, warp_size);                                    \
+      idx = __shfl_down(idx, 8, WARP_SIZE);                                    \
     }                                                                          \
-    temp_v = __shfl_down(temp_v, 4, warp_size);                                \
+    temp_v = __shfl_down(temp_v, 4, WARP_SIZE);                                \
     if (temp_v > v) {                                                          \
       v = temp_v;                                                              \
-      idx = __shfl_down(idx, 4, warp_size);                                    \
+      idx = __shfl_down(idx, 4, WARP_SIZE);                                    \
     }                                                                          \
-    temp_v = __shfl_down(temp_v, 2, warp_size);                                \
+    temp_v = __shfl_down(temp_v, 2, WARP_SIZE);                                \
     if (temp_v > v) {                                                          \
       v = temp_v;                                                              \
-      idx = __shfl_down(idx, 2, warp_size);                                    \
+      idx = __shfl_down(idx, 2, WARP_SIZE);                                    \
     }                                                                          \
-    temp_v = __shfl_down(temp_v, 1, warp_size);                                \
+    temp_v = __shfl_down(temp_v, 1, WARP_SIZE);                                \
     if (temp_v > v) {                                                          \
       v = temp_v;                                                              \
-      idx = __shfl_down(idx, 1, warp_size);                                    \
+      idx = __shfl_down(idx, 1, WARP_SIZE);                                    \
     }                                                                          \
     break;                                                                     \
   case REDUCEOP::MIN:                                                          \
-    temp_v = __shfl_down(temp_v, 16, warp_size);                               \
+    temp_v = __shfl_down(temp_v, 16, WARP_SIZE);                               \
     if (temp_v < v) {                                                          \
       v = temp_v;                                                              \
-      idx = __shfl_down(idx, 16, warp_size);                                   \
+      idx = __shfl_down(idx, 16, WARP_SIZE);                                   \
     }                                                                          \
-    temp_v = __shfl_down(temp_v, 8, warp_size);                                \
+    temp_v = __shfl_down(temp_v, 8, WARP_SIZE);                                \
     if (temp_v < v) {                                                          \
       v = temp_v;                                                              \
-      idx = __shfl_down(idx, 8, warp_size);                                    \
+      idx = __shfl_down(idx, 8, WARP_SIZE);                                    \
     }                                                                          \
-    temp_v = __shfl_down(temp_v, 4, warp_size);                                \
+    temp_v = __shfl_down(temp_v, 4, WARP_SIZE);                                \
     if (temp_v < v) {                                                          \
       v = temp_v;                                                              \
-      idx = __shfl_down(idx, 4, warp_size);                                    \
+      idx = __shfl_down(idx, 4, WARP_SIZE);                                    \
     }                                                                          \
-    temp_v = __shfl_down(temp_v, 2, warp_size);                                \
+    temp_v = __shfl_down(temp_v, 2, WARP_SIZE);                                \
     if (temp_v < v) {                                                          \
       v = temp_v;                                                              \
-      idx = __shfl_down(idx, 2, warp_size);                                    \
+      idx = __shfl_down(idx, 2, WARP_SIZE);                                    \
     }                                                                          \
-    temp_v = __shfl_down(temp_v, 1, warp_size);                                \
+    temp_v = __shfl_down(temp_v, 1, WARP_SIZE);                                \
     if (temp_v < v) {                                                          \
       v = temp_v;                                                              \
-      idx = __shfl_down(idx, 1, warp_size);                                    \
+      idx = __shfl_down(idx, 1, WARP_SIZE);                                    \
     }                                                                          \
     break;                                                                     \
   default:                                                                     \
