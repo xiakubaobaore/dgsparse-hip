@@ -313,6 +313,158 @@ Ndim_Residue:
   }
 }
 
+template <typename Index, typename DType, typename access_t>
+__global__ void
+csrspmm_parreduce_nnzbalance_kernel(const Index nr, const Index feature_size,
+                                    const Index nnz_, const Index rowPtr[],
+                                    const Index colIdx[], const DType values[],
+                                    const DType dnInput[], DType dnOutput[]) {
+  constexpr Index CoarsenFactor = sizeof(access_t) / sizeof(DType);
+  Index nnz = nnz_;
+  if (nnz < 0)
+    nnz = rowPtr[nr];
+
+  Index lane_id = (threadIdx.x & (32 - 1));
+  Index Nnzdim_warp_id = blockIdx.x * blockDim.y + threadIdx.y;
+  Index nz_start = Nnzdim_warp_id * 32;
+  Index stride = gridDim.x * (blockDim.y * 32);
+
+  // get the dense column offset
+  Index col_offset = blockIdx.y * 32 + (threadIdx.x >> 5) * CoarsenFactor;
+  const DType *B_panel = dnInput + col_offset;
+  DType *C_panel = dnOutput + col_offset;
+  Index ldB = feature_size;
+  Index ldC = feature_size;
+
+  Index k;
+  DType v;
+  Index E_k_idx[CoarsenFactor] = {0};
+  DType c[CoarsenFactor] = {0};
+  DType buffer[CoarsenFactor] = {0};
+
+  if (col_offset >= feature_size)
+    return;
+  if (col_offset + CoarsenFactor >= feature_size)
+    goto Ndim_Residue;
+
+  for (int nz_id = nz_start + lane_id;
+       nz_id < nnz + lane_id; // make sure NO warp loop-divergence
+       nz_id += stride) {
+    Index row = binary_search_segment_number<Index>(rowPtr, nr, nnz, nz_id);
+
+    if (nz_id < nnz) {
+      k = colIdx[nz_id];
+      v = __guard_load_default_one<DType>(values, nz_id);
+    } else {
+      k = 0;
+      v = 0.0f;
+    }
+
+    // load B-elements in vector-type
+    *(access_t *)buffer = *(access_t *)(B_panel + k * ldB);
+#pragma unroll
+    for (int i = 0; i < CoarsenFactor; i++) {
+      c[i] = buffer[i] * v;
+    }
+
+    // reduction
+    Index row_intv = __shfl(row, (32 - 1)) - __shfl(row, 0);
+    if (row_intv == 0) {
+// if all non-zeros in this warp belong to the same row, use a simple reduction
+#pragma unroll
+      for (int i = 0; i < CoarsenFactor; i++) {
+        DType temp_c = c[i];
+        int idx = 0;
+        SHFL_DOWN_REDUCE(c[i], temp_c, REDUCEOP::SUM, idx);
+      }
+      if (lane_id == 0) {
+#pragma unroll
+        for (int i = 0; i < CoarsenFactor; i++) {
+          atomicAdd(C_panel + row * ldC + i, c[i]);
+        }
+      }
+    } else {
+      // if non-zeros belong to different rows, use a parallel-scan primitive
+      // thread that holds the start of each segment are responsible for writing
+      // results
+      bool is_seg_start = ((__shfl_up(row, 1) != row) || (lane_id == 0));
+      DType tmpv;
+      Index tmpr;
+#pragma unroll
+      for (int i = 0; i < CoarsenFactor; i++) {
+        SEG_SHFL_SCAN(c[i], tmpv, row, tmpr);
+      }
+      if (is_seg_start) {
+// atomic add has no vector-type form.
+#pragma unroll
+        for (int i = 0; i < CoarsenFactor; i++) {
+          atomicAdd(C_panel + row * ldC + i, c[i]);
+        }
+      }
+    }
+  }
+  return;
+Ndim_Residue:
+  Index valid_lane_num = feature_size - col_offset;
+
+  for (int nz_id = nz_start + lane_id;
+       nz_id < nnz + lane_id; // make sure NO warp loop-divergence
+       nz_id += stride) {
+    Index row = binary_search_segment_number<Index>(rowPtr, nr, nnz, nz_id);
+
+    if (nz_id < nnz) {
+      k = colIdx[nz_id];
+      v = __guard_load_default_one<DType>(values, nz_id);
+    } else {
+      k = 0;
+      v = 0.0f;
+    }
+
+#pragma unroll
+    for (int i = 0; i < CoarsenFactor; i++) {
+      if (i < valid_lane_num) {
+        c[i] = B_panel[k * ldB + i] * v;
+      }
+    }
+
+    // reduction
+    Index row_intv = __shfl(row, (32 - 1)) - __shfl(row, 0);
+    if (row_intv == 0) {
+#pragma unroll
+      for (int i = 0; i < CoarsenFactor; i++) {
+        DType temp_c = c[i];
+        int idx = 0;
+        SHFL_DOWN_REDUCE(c[i], temp_c, REDUCEOP::SUM, idx);
+      }
+      if (lane_id == 0) {
+#pragma unroll
+        for (int i = 0; i < CoarsenFactor; i++) {
+          if (i < valid_lane_num) {
+            atomicAdd(C_panel + row * ldC + i, c[i]);
+          }
+        }
+      }
+    } else {
+      bool is_seg_start = ((__shfl_up(row, 1) != row) || (lane_id == 0));
+      DType tmpv;
+      Index tmpr;
+#pragma unroll
+      for (int i = 0; i < CoarsenFactor; i++) {
+        SEG_SHFL_SCAN(c[i], tmpv, row, tmpr);
+      }
+      if (is_seg_start) {
+#pragma unroll
+        for (int i = 0; i < CoarsenFactor; i++) {
+          if (i < valid_lane_num) {
+            atomicAdd(C_panel + row * ldC + i, c[i]);
+          }
+        }
+      }
+    }
+  }
+  return;
+}
+
 template <typename Index, typename DType>
 __global__ void
 csrspmm_neighbor_group_kernel(const Index edge_groups, const Index feature_size,
