@@ -109,6 +109,133 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
                   out_E.data_ptr<int>());
         });
       });
+  } else if (algorithm == 2) {
+    // number of parallel warps along M-dimension
+    int Mdim = csrptr.size(0) - 1;
+    int Ndim = in_feat.size(1);
+    int coarsen_factor = (Ndim % 4 == 0) ? 4 : (Ndim % 2 == 0) ? 2 : 1;
+    // partition large-N and map to blockdim.y to help cache performance
+    int Ndim_threadblock = CEIL(in_feat.size(1), 32);
+    int Ndim_warp_per_tb = min(Ndim, 32) / coarsen_factor;
+    int RefThreadPerBlock = 256;
+    int ref_warp_per_tb = RefThreadPerBlock / 32;
+    int Mdim_warp_per_tb = CEIL(ref_warp_per_tb, Ndim_warp_per_tb);
+
+    // total number of warps
+    int gridDimX = CEIL(Mdim, Mdim_warp_per_tb);
+    int gridDimY = Ndim_threadblock;
+
+    dim3 gridDim(gridDimX, gridDimY, 1);
+    dim3 blockDim(Ndim_warp_per_tb * 32, Mdim_warp_per_tb, 1);
+
+    if (has_value)
+      if (coarsen_factor == 4) {
+        SWITCH_REDUCEOP(reduce_op, REDUCE, {
+          SWITCH_COMPUTEOP(compute_op, COMPUTE, {
+            csrspmm_parreduce_rowbalance_kernel<int, float, float4, REDUCE,
+                                                COMPUTE><<<gridDim, blockDim>>>(
+                Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
+                edge_val.data_ptr<float>(), in_feat.data_ptr<float>(),
+                out_feat.data_ptr<float>(), out_E.data_ptr<int>());
+          });
+        });
+      } else if (coarsen_factor == 2) {
+        SWITCH_REDUCEOP(reduce_op, REDUCE, {
+          SWITCH_COMPUTEOP(compute_op, COMPUTE, {
+            csrspmm_parreduce_rowbalance_kernel<int, float, float2, REDUCE,
+                                                COMPUTE><<<gridDim, blockDim>>>(
+                Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
+                edge_val.data_ptr<float>(), in_feat.data_ptr<float>(),
+                out_feat.data_ptr<float>(), out_E.data_ptr<int>());
+          });
+        });
+      } else {
+        SWITCH_REDUCEOP(reduce_op, REDUCE, {
+          SWITCH_COMPUTEOP(compute_op, COMPUTE, {
+            csrspmm_parreduce_rowbalance_kernel<int, float, float, REDUCE,
+                                                COMPUTE><<<gridDim, blockDim>>>(
+                Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
+                edge_val.data_ptr<float>(), in_feat.data_ptr<float>(),
+                out_feat.data_ptr<float>(), out_E.data_ptr<int>());
+          });
+        });
+      }
+    else {
+      if (coarsen_factor == 4) {
+        SWITCH_REDUCEOP(reduce_op, REDUCE, {
+          SWITCH_COMPUTEOP(compute_op, COMPUTE, {
+            csrspmm_parreduce_rowbalance_kernel<int, float, float4, REDUCE,
+                                                COMPUTE><<<gridDim, blockDim>>>(
+                Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
+                (float *)nullptr, in_feat.data_ptr<float>(),
+                out_feat.data_ptr<float>(), out_E.data_ptr<int>());
+          });
+        });
+      } else if (coarsen_factor == 2) {
+        SWITCH_REDUCEOP(reduce_op, REDUCE, {
+          SWITCH_COMPUTEOP(compute_op, COMPUTE, {
+            csrspmm_parreduce_rowbalance_kernel<int, float, float2, REDUCE,
+                                                COMPUTE><<<gridDim, blockDim>>>(
+                Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
+                (float *)nullptr, in_feat.data_ptr<float>(),
+                out_feat.data_ptr<float>(), out_E.data_ptr<int>());
+          });
+        });
+      } else {
+        SWITCH_REDUCEOP(reduce_op, REDUCE, {
+          SWITCH_COMPUTEOP(compute_op, COMPUTE, {
+            csrspmm_parreduce_rowbalance_kernel<int, float, float, REDUCE,
+                                                COMPUTE><<<gridDim, blockDim>>>(
+                Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
+                (float *)nullptr, in_feat.data_ptr<float>(),
+                out_feat.data_ptr<float>(), out_E.data_ptr<int>());
+          });
+        });
+      }
+    }
+  }
+  else if(algorithm==3)
+  {
+    int N=in_feat.size(1);
+    // factor of thread coarsening
+    int coarsen_factor = (N % 4 == 0) ? 4 : (N % 2 == 0) ? 2 : 1;
+    // number of parallel warps along M-dimension
+    const int segreduce_size_per_warp = 32;
+    int Nnzdim_worker = indices.size(0); // CEIL(spmatA.nnz, segreduce_size_per_warp);
+    // partition large-N and map to blockdim.y to help cache performance
+    int Ndim_threadblock = CEIL(N, 32);
+    int Ndim_warp_per_tb = min(N, 32) / coarsen_factor;
+    // int Ndim_warp_per_tb = min(N, 32)
+
+    int RefThreadPerBlock = 256;
+    int ref_warp_per_tb = RefThreadPerBlock / 32;
+    int Nnzdim_warp_per_tb = CEIL(ref_warp_per_tb, Ndim_warp_per_tb);
+
+    // total number of warps
+    int gridDimX = CEIL(Nnzdim_worker, Nnzdim_warp_per_tb);
+    int gridDimY = Ndim_threadblock;
+    dim3 gridDim(gridDimX, gridDimY, 1);
+    dim3 blockDim(Ndim_warp_per_tb * 32, Nnzdim_warp_per_tb, 1);
+
+    if (coarsen_factor == 4) {
+      csrspmm_parreduce_nnzbalance_kernel<int,float,float4><<<gridDim,
+      blockDim>>>(
+          v, N, Nnzdim_worker, csrptr.data_ptr<int>(),
+          indices.data_ptr<int>(), edge_val.data_ptr<float>(),
+          in_feat.data_ptr<float>(), out_feat.data_ptr<float>());
+    } else if (coarsen_factor == 2) {
+      csrspmm_parreduce_nnzbalance_kernel<int,float,float2><<<gridDim,
+      blockDim>>>(
+          v, N, Nnzdim_worker, csrptr.data_ptr<int>(),
+          indices.data_ptr<int>(), edge_val.data_ptr<float>(),
+          in_feat.data_ptr<float>(), out_feat.data_ptr<float>());
+    } else {
+      csrspmm_parreduce_nnzbalance_kernel<int,float,float><<<gridDim,
+      blockDim>>>(
+          v, N, Nnzdim_worker, csrptr.data_ptr<int>(),
+          indices.data_ptr<int>(), edge_val.data_ptr<float>(),
+          in_feat.data_ptr<float>(), out_feat.data_ptr<float>());
+    }
   }
 
   SWITCH_REDUCEOP(reduce_op, REDUCE, {

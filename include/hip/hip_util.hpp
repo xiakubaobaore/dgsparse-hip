@@ -104,6 +104,28 @@
     break;                                                                     \
   };
 
+#define SEG_SHFL_SCAN(v, tmpv, segid, tmps)                                    \
+  tmpv = __shfl_down(v, 1);                                                    \
+  tmps = __shfl_down(segid, 1);                                                \
+  if (tmps == segid && lane_id < 31)                                           \
+    v += tmpv;                                                                 \
+  tmpv = __shfl_down(v, 2);                                                    \
+  tmps = __shfl_down(segid, 2);                                                \
+  if (tmps == segid && lane_id < 30)                                           \
+    v += tmpv;                                                                 \
+  tmpv = __shfl_down(v, 4);                                                    \
+  tmps = __shfl_down(segid, 4);                                                \
+  if (tmps == segid && lane_id < 28)                                           \
+    v += tmpv;                                                                 \
+  tmpv = __shfl_down(v, 8);                                                    \
+  tmps = __shfl_down(segid, 8);                                                \
+  if (tmps == segid && lane_id < 24)                                           \
+    v += tmpv;                                                                 \
+  tmpv = __shfl_down(v, 16);                                                   \
+  tmps = __shfl_down(segid, 16);                                               \
+  if (tmps == segid && lane_id < 16)                                           \
+    v += tmpv;
+
 template <typename T>
 __device__ __forceinline__ T __guard_load_default_one(const T *base,
                                                       int offset) {
