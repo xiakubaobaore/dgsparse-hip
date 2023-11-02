@@ -88,7 +88,7 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
     size_t size_A = size_m * size_k * sizeof(float);
     size_t size_B = size_n * size_k * sizeof(float);
     size_t size_C = size_m * size_n * sizeof(float);
-    printf("[Spmm of %d*%d*%d elements]\n", size_m, size_k, size_n);
+
 
     //申请Host内存并初始化
     float *h_A = (float *)malloc(size_A);
@@ -171,7 +171,7 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
         }
         end = clock();
         time_elapsed = (end - start) * 1.0/iter;
-        printf("rocsparse kernel time = %fms\n", time_elapsed);
+        printf(" rocsparse  = %.3fms", time_elapsed);
 
         rocsparse_destroy_handle(rhandle);
         rocsparse_destroy_mat_descr(rdescr);
@@ -196,7 +196,7 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
         // }
         // end = clock();
         // time_elapsed = (end - start) * 1.0/iter;
-        // printf("hipsparse kernel time = %fms\n", time_elapsed);
+        // printf("hipsparse  = %.3fms\n", time_elapsed);
         // hipsparseDestroy(handle);
         // hipsparseDestroyMatDescr(descr);
     }
@@ -226,7 +226,7 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
         }
         end = clock();
         time_elapsed = (end - start) * 1.0/iter;
-        printf("dgsparse_0 kernel time = %fms\n", time_elapsed);
+        printf(" dgsparse_0 = %.3fms", time_elapsed);
     }
     else if(algorithm == method::dgsparse_1){
         int Mdim_worker = size_m;
@@ -254,7 +254,7 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
         }
         end = clock();
         time_elapsed = (end - start) * 1.0/iter;
-        printf("dgsparse_1 kernel time = %fms\n", time_elapsed);
+        printf(" dgsparse_1 = %.3fms", time_elapsed);
     }
     else if(algorithm == method::dgsparse_2){
         int Mdim_worker = size_m;
@@ -288,7 +288,6 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
             }
             end = clock();
             time_elapsed = (end - start) * 1.0/iter;
-            printf("dgsparse_2 kernel time = %fms\n", time_elapsed);
         }
         else if (coarsen_factor == 2){
             start = clock();
@@ -304,7 +303,6 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
             }
             end = clock();
             time_elapsed = (end - start) * 1.0/iter;
-            printf("dgsparse_2 kernel time = %fms\n", time_elapsed);
         }
         else {
             start = clock();
@@ -320,8 +318,8 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
             }
             end = clock();
             time_elapsed = (end - start) * 1.0/iter;
-            printf("dgsparse_2 kernel time = %fms\n", time_elapsed);
         }
+        printf(" dgsparse_2 = %.3fms", time_elapsed);
     }
     checkHipError(hipDeviceSynchronize());
 
@@ -350,7 +348,7 @@ bool spmm_check(int size_m, int size_k, int size_n, method algorithm)
     size_t size_A = size_m * size_k * sizeof(float);
     size_t size_B = size_n * size_k * sizeof(float);
     size_t size_C = size_m * size_n * sizeof(float);
-    printf("[Spmm of %d*%d*%d elements]\n", size_m, size_k, size_n);
+
 
     //申请Host内存并初始化
     float *h_A = (float *)malloc(size_A);
@@ -574,7 +572,7 @@ bool spmm_check(int size_m, int size_k, int size_n, method algorithm)
 
     bool flag = false;
     if(check_result(h_ref, h_C, size_m * size_n)){
-        printf("###########spmm check pass!#############\n");
+        printf("\n###########spmm check pass!#############\n");
         flag = true;
     }
 
@@ -605,7 +603,7 @@ float spmm_group_time(int size_m, int size_k, int size_n, int iter, float sparsi
     size_t size_A = size_m * size_k * sizeof(float);
     size_t size_B = size_n * size_k * sizeof(float);
     size_t size_C = size_m * size_n * sizeof(float);
-    printf("[Spmm of %d*%d*%d elements]\n", size_m, size_k, size_n);
+
 
     //申请Host内存并初始化
     float *h_A = (float *)malloc(size_A);
@@ -686,7 +684,7 @@ float spmm_group_time(int size_m, int size_k, int size_n, int iter, float sparsi
     }
     end = clock();
     float time_elapsed = (end - start) * 1.0/iter;
-    printf("dgsparse_group kernel time = %fms\n", time_elapsed);
+    printf(" dgsparse_group = %.3fms", time_elapsed);
 
     checkHipError(hipDeviceSynchronize());
 
@@ -714,7 +712,7 @@ bool spmm_check_group(int size_m, int size_k, int size_n)
     size_t size_A = size_m * size_k * sizeof(float);
     size_t size_B = size_n * size_k * sizeof(float);
     size_t size_C = size_m * size_n * sizeof(float);
-    printf("[Spmm of %d*%d*%d elements]\n", size_m, size_k, size_n);
+
 
     //申请Host内存并初始化
     float *h_A = (float *)malloc(size_A);
@@ -806,7 +804,7 @@ bool spmm_check_group(int size_m, int size_k, int size_n)
 
     bool flag = false;
     if(check_result(h_ref, h_C, size_m * size_n)){
-        printf("###########spmm group check pass!#############\n");
+        printf("\n###########spmm group check pass!#############\n");
         flag = true;
     }
 
@@ -850,11 +848,13 @@ int main(int argc,char **argv)
     for(int i=0;i<3;++i){
         for(int j=0;j<3;++j){
             for(int k=0;k<3;++k){
+                printf("[Spmm of %d*%d*%d]", size_m[i], size_k[i], size_n[i]);
                 time_0 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_0);
                 time_1 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_1);
                 time_2 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_2);
                 time_group = spmm_group_time(size_m[i], size_k[j], size_n[k], 300, 0.01);
                 time_ref = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::rocsparse);
+                printf("\n");
                 speedup_0 += time_ref/time_0;
                 speedup_1 += time_ref/time_1;
                 speedup_2 += time_ref/time_2;
@@ -866,9 +866,9 @@ int main(int argc,char **argv)
     speedup_1 /= 27;
     speedup_2 /= 27;
     speedup_group /= 27;
-    printf("average_speedup_0 = %f\n", speedup_0);
-    printf("average_speedup_1 = %f\n", speedup_1);
-    printf("average_speedup_2 = %f\n", speedup_2);
-    printf("average_speedup_group = %f\n", speedup_group);
+    printf("average_speedup_0 = %.3f\n", speedup_0);
+    printf("average_speedup_1 = %.3f\n", speedup_1);
+    printf("average_speedup_2 = %.3f\n", speedup_2);
+    printf("average_speedup_group = %.3f\n", speedup_group);
     return 0;
 }
