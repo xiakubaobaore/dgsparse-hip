@@ -1,6 +1,7 @@
 // #include <c10/cuda/CUDAGuard.h>
 #include <ATen/hip/impl/HIPGuardImplMasqueradingAsCUDA.h>
 #include <torch/extension.h>
+#include <rocsparse/rocsparse.h>
 
 #include <iostream>
 #include <tuple>
@@ -236,6 +237,26 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
           indices.data_ptr<int>(), edge_val.data_ptr<float>(),
           in_feat.data_ptr<float>(), out_feat.data_ptr<float>());
     }
+  }
+  else if(algorithm == -1)
+  {
+    float alpha = 1;
+    float beta = 0;
+    rocsparse_handle rhandle;
+    rocsparse_create_handle(&rhandle);
+    rocsparse_mat_descr rdescr;
+    rocsparse_create_mat_descr(&rdescr);
+    rocsparse_set_mat_type(rdescr, rocsparse_matrix_type_general);
+    rocsparse_set_mat_index_base(rdescr, rocsparse_index_base_zero);
+
+    rocsparse_scsrmm(rhandle, rocsparse_operation_none, rocsparse_operation_none,
+                    csrptr.size(0) - 1, in_feat.size(1), in_feat.size(0), indices.size(0), &alpha, rdescr,
+                    edge_val.data_ptr<float>(), csrptr.data_ptr<int>(),
+                    indices.data_ptr<int>(), in_feat.data_ptr<float>(),
+                    in_feat.size(0), &beta, out_feat.data_ptr<float>(), csrptr.size(0) - 1);
+
+    rocsparse_destroy_handle(rhandle);
+    rocsparse_destroy_mat_descr(rdescr);
   }
 
   SWITCH_REDUCEOP(reduce_op, REDUCE, {

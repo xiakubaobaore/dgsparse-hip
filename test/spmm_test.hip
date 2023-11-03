@@ -28,6 +28,7 @@ __global__ void warm_up() {}
 void init_random_sparse(float *A, int size, float threshold){
     for(int i=0;i<size;i++){
         if(rand()/(float)RAND_MAX < threshold){
+            // A[i] = rand()/(float)RAND_MAX;
             A[i] = 1;
         }
         else{
@@ -84,7 +85,7 @@ void generate_group(int nrow, int group_size, std::vector<int> &csrptr,
     }
 }
 
-float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, method algorithm)
+float spmm_time(float *h_A, int size_m, int size_k, int size_n, int iter, float sparsity, method algorithm)
 {
     size_t size_A = size_m * size_k * sizeof(float);
     size_t size_B = size_n * size_k * sizeof(float);
@@ -92,16 +93,15 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
 
 
     //申请Host内存并初始化
-    float *h_A = (float *)malloc(size_A);
     float *h_B = (float *)malloc(size_B);
     float *h_B_trans = (float *)malloc(size_B);
     int *E = (int *)calloc(size_m * size_n, sizeof(int));
 
-    if (h_A == NULL || h_B == NULL || E == NULL || h_B_trans == NULL){
+    if (h_B == NULL || E == NULL || h_B_trans == NULL){
         printf ("malloc failed\n");
         return false;
     }
-    init_random_sparse(h_A, size_m*size_k, sparsity);
+
     init_random(h_B, size_k*size_n);
     transpose(h_B, h_B_trans, size_k, size_n);
 
@@ -375,7 +375,6 @@ float spmm_time(int size_m, int size_k, int size_n, int iter, float sparsity, me
     hipFree(d_ptr);
     hipFree(d_ind);
     hipFree(d_val);
-    free(h_A);
     free(h_B);
     free(h_B_trans);
     free(E);
@@ -676,7 +675,7 @@ bool spmm_check(int size_m, int size_k, int size_n, method algorithm)
     return flag;
 }
 
-float spmm_group_time(int size_m, int size_k, int size_n, int iter, float sparsity)
+float spmm_group_time(float *h_A, int size_m, int size_k, int size_n, int iter, float sparsity)
 {
     size_t size_A = size_m * size_k * sizeof(float);
     size_t size_B = size_n * size_k * sizeof(float);
@@ -684,14 +683,12 @@ float spmm_group_time(int size_m, int size_k, int size_n, int iter, float sparsi
 
 
     //申请Host内存并初始化
-    float *h_A = (float *)malloc(size_A);
     float *h_B = (float *)malloc(size_B);
 
-    if (h_A == NULL || h_B == NULL){
+    if (h_B == NULL){
         printf ("malloc failed\n");
         return false;
     }
-    init_random_sparse(h_A, size_m*size_k, sparsity);
     init_random(h_B, size_k*size_n);
 
     std::vector<int> csrptr, csrind, group_ptr, group_row;
@@ -773,7 +770,6 @@ float spmm_group_time(int size_m, int size_k, int size_n, int iter, float sparsi
     hipFree(d_grouprow);
     hipFree(d_ind);
     hipFree(d_val);
-    free(h_A);
     free(h_B);
 
     csrptr.clear();csrptr.shrink_to_fit();
@@ -911,6 +907,8 @@ bool spmm_group_check(int size_m, int size_k, int size_n)
 int main(int argc,char **argv)
 {
     srand((int)time(0));
+
+    //check correctness
     spmm_check(1000, 1000, 128, method::dgsparse_0);
     spmm_check(1000, 1000, 128, method::rocsparse);
     spmm_check(1000, 1000, 128, method::dgsparse_1);
@@ -920,26 +918,32 @@ int main(int argc,char **argv)
 
     int size_m[4]={1000, 5000, 10000};
     int size_k[4]={1000, 5000, 10000};
-    int size_n[3]={WARP_SIZE,64,128};
+    int size_n[3]={32,64,128};
 
-    float speedup_0 = 0, speedup_1 = 0, speedup_2 = 0, speedup_3 = 0, speedup_group = 0;
+    float speedup_0 = 0, speedup_1 =0, speedup_2 = 0, speedup_3 = 0, speedup_group = 0;
     float time_ref, time_0, time_1, time_2, time_3, time_group;
     for(int i=0;i<3;++i){
         for(int j=0;j<3;++j){
             for(int k=0;k<3;++k){
-                printf("[Spmm of %d*%d*%d]", size_m[i], size_k[j], size_n[k]);
-                time_0 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_0);
-                time_1 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_1);
-                time_2 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_2);
-                time_3 = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_3);
-                time_group = spmm_group_time(size_m[i], size_k[j], size_n[k], 300, 0.01);
-                time_ref = spmm_time(size_m[i], size_k[j], size_n[k], 300, 0.01, method::rocsparse);
+                size_t size_sparse = size_m[i] * size_k[j] * sizeof(float);
+                float *sparse = (float *)malloc(size_sparse);
+                init_random_sparse(sparse, size_m[i] * size_k[j], 0.01);
+
+                printf("[Spmm of %d*%d*%d", size_m[i], size_k[j], size_n[k]);
+                time_0 = spmm_time(sparse, size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_0);
+                time_1 = spmm_time(sparse, size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_1);
+                time_2 = spmm_time(sparse, size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_2);
+                time_3 = spmm_time(sparse, size_m[i], size_k[j], size_n[k], 300, 0.01, method::dgsparse_3);
+                time_group = spmm_group_time(sparse, size_m[i], size_k[j], size_n[k], 300, 0.01);
+                time_ref = spmm_time(sparse, size_m[i], size_k[j], size_n[k], 300, 0.01, method::rocsparse);
                 printf("\n");
                 speedup_0 += time_ref/time_0;
                 speedup_1 += time_ref/time_1;
                 speedup_2 += time_ref/time_2;
                 speedup_3 += time_ref/time_3;
                 speedup_group += time_ref/time_group;
+
+                free(sparse);
             }
         }
     }

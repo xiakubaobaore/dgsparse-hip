@@ -48,6 +48,6 @@ features = [32, 64, 128]
 @pytest.mark.parametrize('feat', features)
 def test_spmm_sum(dataset, feat):
     data = GraphDataset(dataset, 0)
-    gc = SpMMSum(data, feat, 0, 0)
+    gc = SpMMSum(data, feat, 0, -1)
     # gc.forward_check()
     gc.backward_check()
