@@ -1,4 +1,4 @@
-// #include <c10/cuda/CUDAGuard.h>
+#include "hip/hip_runtime.h"
 #include <ATen/hip/impl/HIPGuardImplMasqueradingAsCUDA.h>
 #include <torch/extension.h>
 #include <rocsparse/rocsparse.h>
@@ -56,8 +56,8 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
     if (has_value)
       SWITCH_REDUCEOP(reduce_op, REDUCE, {
         SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-          csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>
-          <<<gridDim, blockDim>>>(
+          hipLaunchKernelGGL(( csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>)
+          , dim3(gridDim), dim3(blockDim), 0, 0,
             Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
             indices.data_ptr<int>(), edge_val.data_ptr<float>(),
             in_feat.data_ptr<float>(), out_feat.data_ptr<float>(),
@@ -68,8 +68,8 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
     else
       SWITCH_REDUCEOP(reduce_op, REDUCE, {
         SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-          csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>
-          <<<gridDim, blockDim>>>(
+          hipLaunchKernelGGL(( csrspmm_seqreduce_rowbalance_kernel<int, float, REDUCE, COMPUTE>)
+          , dim3(gridDim), dim3(blockDim), 0, 0,
             Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
             indices.data_ptr<int>(), (float *)nullptr,
             in_feat.data_ptr<float>(), out_feat.data_ptr<float>(),
@@ -91,8 +91,8 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
     if (has_value)
       SWITCH_REDUCEOP(reduce_op, REDUCE, {
         SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-          csrspmm_seqreduce_nnzbalance_kernel<int, float, REDUCE, COMPUTE>
-              <<<gridDim, blockDim>>>(
+          hipLaunchKernelGGL(( csrspmm_seqreduce_nnzbalance_kernel<int, float, REDUCE, COMPUTE>)
+              , dim3(gridDim), dim3(blockDim), 0, 0,
                   v, Ndim_worker, Nnzdim_worker, csrptr.data_ptr<int>(),
                   indices.data_ptr<int>(), edge_val.data_ptr<float>(),
                   in_feat.data_ptr<float>(), out_feat.data_ptr<float>(),
@@ -102,8 +102,8 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
     else
       SWITCH_REDUCEOP(reduce_op, REDUCE, {
         SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-          csrspmm_seqreduce_nnzbalance_kernel<int, float, REDUCE, COMPUTE>
-              <<<gridDim, blockDim>>>(
+          hipLaunchKernelGGL(( csrspmm_seqreduce_nnzbalance_kernel<int, float, REDUCE, COMPUTE>)
+              , dim3(gridDim), dim3(blockDim), 0, 0,
                   v, Ndim_worker, Nnzdim_worker, csrptr.data_ptr<int>(),
                   indices.data_ptr<int>(), (float *)nullptr,
                   in_feat.data_ptr<float>(), out_feat.data_ptr<float>(),
@@ -133,8 +133,8 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
       if (coarsen_factor == 4) {
         SWITCH_REDUCEOP(reduce_op, REDUCE, {
           SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-            csrspmm_parreduce_rowbalance_kernel<int, float, float4, REDUCE,
-                                                COMPUTE><<<gridDim, blockDim>>>(
+            hipLaunchKernelGGL(( csrspmm_parreduce_rowbalance_kernel<int, float, float4, REDUCE,
+                                                COMPUTE>), dim3(gridDim), dim3(blockDim), 0, 0,
                 Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
                 edge_val.data_ptr<float>(), in_feat.data_ptr<float>(),
                 out_feat.data_ptr<float>(), out_E.data_ptr<int>());
@@ -143,8 +143,8 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
       } else if (coarsen_factor == 2) {
         SWITCH_REDUCEOP(reduce_op, REDUCE, {
           SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-            csrspmm_parreduce_rowbalance_kernel<int, float, float2, REDUCE,
-                                                COMPUTE><<<gridDim, blockDim>>>(
+            hipLaunchKernelGGL(( csrspmm_parreduce_rowbalance_kernel<int, float, float2, REDUCE,
+                                                COMPUTE>), dim3(gridDim), dim3(blockDim), 0, 0,
                 Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
                 edge_val.data_ptr<float>(), in_feat.data_ptr<float>(),
                 out_feat.data_ptr<float>(), out_E.data_ptr<int>());
@@ -153,8 +153,8 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
       } else {
         SWITCH_REDUCEOP(reduce_op, REDUCE, {
           SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-            csrspmm_parreduce_rowbalance_kernel<int, float, float, REDUCE,
-                                                COMPUTE><<<gridDim, blockDim>>>(
+            hipLaunchKernelGGL(( csrspmm_parreduce_rowbalance_kernel<int, float, float, REDUCE,
+                                                COMPUTE>), dim3(gridDim), dim3(blockDim), 0, 0,
                 Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
                 edge_val.data_ptr<float>(), in_feat.data_ptr<float>(),
                 out_feat.data_ptr<float>(), out_E.data_ptr<int>());
@@ -165,8 +165,8 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
       if (coarsen_factor == 4) {
         SWITCH_REDUCEOP(reduce_op, REDUCE, {
           SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-            csrspmm_parreduce_rowbalance_kernel<int, float, float4, REDUCE,
-                                                COMPUTE><<<gridDim, blockDim>>>(
+            hipLaunchKernelGGL(( csrspmm_parreduce_rowbalance_kernel<int, float, float4, REDUCE,
+                                                COMPUTE>), dim3(gridDim), dim3(blockDim), 0, 0,
                 Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
                 (float *)nullptr, in_feat.data_ptr<float>(),
                 out_feat.data_ptr<float>(), out_E.data_ptr<int>());
@@ -175,8 +175,8 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
       } else if (coarsen_factor == 2) {
         SWITCH_REDUCEOP(reduce_op, REDUCE, {
           SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-            csrspmm_parreduce_rowbalance_kernel<int, float, float2, REDUCE,
-                                                COMPUTE><<<gridDim, blockDim>>>(
+            hipLaunchKernelGGL(( csrspmm_parreduce_rowbalance_kernel<int, float, float2, REDUCE,
+                                                COMPUTE>), dim3(gridDim), dim3(blockDim), 0, 0,
                 Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
                 (float *)nullptr, in_feat.data_ptr<float>(),
                 out_feat.data_ptr<float>(), out_E.data_ptr<int>());
@@ -185,8 +185,8 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
       } else {
         SWITCH_REDUCEOP(reduce_op, REDUCE, {
           SWITCH_COMPUTEOP(compute_op, COMPUTE, {
-            csrspmm_parreduce_rowbalance_kernel<int, float, float, REDUCE,
-                                                COMPUTE><<<gridDim, blockDim>>>(
+            hipLaunchKernelGGL(( csrspmm_parreduce_rowbalance_kernel<int, float, float, REDUCE,
+                                                COMPUTE>), dim3(gridDim), dim3(blockDim), 0, 0,
                 Mdim, Ndim, csrptr.data_ptr<int>(), indices.data_ptr<int>(),
                 (float *)nullptr, in_feat.data_ptr<float>(),
                 out_feat.data_ptr<float>(), out_E.data_ptr<int>());
@@ -219,20 +219,20 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
     dim3 blockDim(Ndim_warp_per_tb * 32, Nnzdim_warp_per_tb, 1);
 
     if (coarsen_factor == 4) {
-      csrspmm_parreduce_nnzbalance_kernel<int,float,float4><<<gridDim,
-      blockDim>>>(
+      hipLaunchKernelGGL(( csrspmm_parreduce_nnzbalance_kernel<int,float,float4>), dim3(gridDim),
+      dim3(blockDim), 0, 0,
           v, N, Nnzdim_worker, csrptr.data_ptr<int>(),
           indices.data_ptr<int>(), edge_val.data_ptr<float>(),
           in_feat.data_ptr<float>(), out_feat.data_ptr<float>());
     } else if (coarsen_factor == 2) {
-      csrspmm_parreduce_nnzbalance_kernel<int,float,float2><<<gridDim,
-      blockDim>>>(
+      hipLaunchKernelGGL(( csrspmm_parreduce_nnzbalance_kernel<int,float,float2>), dim3(gridDim),
+      dim3(blockDim), 0, 0,
           v, N, Nnzdim_worker, csrptr.data_ptr<int>(),
           indices.data_ptr<int>(), edge_val.data_ptr<float>(),
           in_feat.data_ptr<float>(), out_feat.data_ptr<float>());
     } else {
-      csrspmm_parreduce_nnzbalance_kernel<int,float,float><<<gridDim,
-      blockDim>>>(
+      hipLaunchKernelGGL(( csrspmm_parreduce_nnzbalance_kernel<int,float,float>), dim3(gridDim),
+      dim3(blockDim), 0, 0,
           v, N, Nnzdim_worker, csrptr.data_ptr<int>(),
           indices.data_ptr<int>(), edge_val.data_ptr<float>(),
           in_feat.data_ptr<float>(), out_feat.data_ptr<float>());
@@ -299,14 +299,14 @@ torch::Tensor spmm_hip_with_mask(torch::Tensor csrptr, torch::Tensor indices,
     // auto out_feat = torch::empty({v, f}, options);
 
     if (has_value)
-      csrspmm_seqreduce_rowbalance_with_mask_kernel<<<gridDim, blockDim>>>(
+      hipLaunchKernelGGL(( csrspmm_seqreduce_rowbalance_with_mask_kernel), dim3(gridDim), dim3(blockDim), 0, 0,
           Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
           indices.data_ptr<int>(), edge_val.data_ptr<float>(),
           in_feat.data_ptr<float>(), E.data_ptr<int>(),
           out_feat.data_ptr<float>());
 
     else
-      csrspmm_seqreduce_rowbalance_with_mask_kernel<<<gridDim, blockDim>>>(
+      hipLaunchKernelGGL(( csrspmm_seqreduce_rowbalance_with_mask_kernel), dim3(gridDim), dim3(blockDim), 0, 0,
           Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
           indices.data_ptr<int>(), (float *)nullptr, in_feat.data_ptr<float>(),
           E.data_ptr<int>(), out_feat.data_ptr<float>());
@@ -328,16 +328,16 @@ torch::Tensor sddmm_hip_csr(torch::Tensor rowptr, torch::Tensor colind,
   auto out = torch::empty({1, nnz}, options);
   if ((k % 2) == 0) {
     SWITCH_REDUCEOP(reduce_op, REDUCE, {
-      sddmmCSR2Scale<REDUCE>
-          <<<dim3(nnz / 16 + (nnz & 15), 1, 1), dim3(16, 4, 1)>>>(
+      hipLaunchKernelGGL(( sddmmCSR2Scale<REDUCE>)
+          , dim3(dim3(nnz / 16 + (nnz & 15), 1, 1)), dim3(dim3(16, 4, 1)), 0, 0,
               m, k, nnz, rowptr.data_ptr<int>(), colind.data_ptr<int>(),
               D1.data_ptr<float>(), D2.data_ptr<float>(),
               out.data_ptr<float>());
     });
   } else {
     SWITCH_REDUCEOP(reduce_op, REDUCE, {
-      sddmmCSR1Scale<REDUCE>
-          <<<dim3(nnz / 16 + (nnz & 15), 1, 1), dim3(32, 4, 1)>>>(
+      hipLaunchKernelGGL(( sddmmCSR1Scale<REDUCE>)
+          , dim3(dim3(nnz / 16 + (nnz & 15), 1, 1)), dim3(dim3(32, 4, 1)), 0, 0,
               m, k, nnz, rowptr.data_ptr<int>(), colind.data_ptr<int>(),
               D1.data_ptr<float>(), D2.data_ptr<float>(),
               out.data_ptr<float>());
@@ -359,8 +359,8 @@ torch::Tensor sddmm_hip_csr_with_mask(torch::Tensor rowptr,
   auto options =
       torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA, devid);
   auto out = torch::empty({1, nnz}, options);
-  sddmmCSR1Scale_with_mask<<<dim3(nnz / 16 + (nnz & 15), 1, 1),
-                             dim3(32, 4, 1)>>>(
+  hipLaunchKernelGGL(( sddmmCSR1Scale_with_mask), dim3(dim3(nnz / 16 + (nnz & 15), 1, 1)),
+                             dim3(dim3(32, 4, 1)), 0, 0,
       m, k, nnz, rowptr.data_ptr<int>(), colind.data_ptr<int>(),
       D1.data_ptr<float>(), D2.data_ptr<float>(), E.data_ptr<int>(),
       out.data_ptr<float>());
