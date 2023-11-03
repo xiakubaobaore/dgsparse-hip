@@ -329,7 +329,7 @@ torch::Tensor sddmm_hip_csr(torch::Tensor rowptr, torch::Tensor colind,
   if ((k % 2) == 0) {
     SWITCH_REDUCEOP(reduce_op, REDUCE, {
       hipLaunchKernelGGL(( sddmmCSR2Scale<REDUCE>)
-          , dim3(dim3(nnz / 16 + (nnz & 15), 1, 1)), dim3(dim3(16, 4, 1)), 0, 0,
+          , dim3(nnz / 16 + (nnz & 15), 1, 1), dim3(16, 4, 1), 0, 0,
               m, k, nnz, rowptr.data_ptr<int>(), colind.data_ptr<int>(),
               D1.data_ptr<float>(), D2.data_ptr<float>(),
               out.data_ptr<float>());
@@ -337,7 +337,7 @@ torch::Tensor sddmm_hip_csr(torch::Tensor rowptr, torch::Tensor colind,
   } else {
     SWITCH_REDUCEOP(reduce_op, REDUCE, {
       hipLaunchKernelGGL(( sddmmCSR1Scale<REDUCE>)
-          , dim3(dim3(nnz / 16 + (nnz & 15), 1, 1)), dim3(dim3(32, 4, 1)), 0, 0,
+          , dim3(nnz / 16 + (nnz & 15), 1, 1), dim3(32, 4, 1), 0, 0,
               m, k, nnz, rowptr.data_ptr<int>(), colind.data_ptr<int>(),
               D1.data_ptr<float>(), D2.data_ptr<float>(),
               out.data_ptr<float>());
@@ -359,8 +359,8 @@ torch::Tensor sddmm_hip_csr_with_mask(torch::Tensor rowptr,
   auto options =
       torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA, devid);
   auto out = torch::empty({1, nnz}, options);
-  hipLaunchKernelGGL(( sddmmCSR1Scale_with_mask), dim3(dim3(nnz / 16 + (nnz & 15), 1, 1)),
-                             dim3(dim3(32, 4, 1)), 0, 0,
+  hipLaunchKernelGGL(( sddmmCSR1Scale_with_mask), dim3(nnz / 16 + (nnz & 15), 1, 1),
+                             dim3(32, 4, 1), 0, 0,
       m, k, nnz, rowptr.data_ptr<int>(), colind.data_ptr<int>(),
       D1.data_ptr<float>(), D2.data_ptr<float>(), E.data_ptr<int>(),
       out.data_ptr<float>());
