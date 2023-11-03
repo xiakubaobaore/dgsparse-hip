@@ -496,4 +496,39 @@ csrspmm_neighbor_group_kernel(const Index edge_groups, const Index feature_size,
   }
 }
 
+template <typename Index, typename DType>
+__global__ void csrspmm_seqreduce_rowbalance_with_mask_kernel(
+    const Index nr, const Index feature_size, const Index rowPtr[],
+    const Index colIdx[], const DType values[], const DType dnInput[],
+    const Index E[], DType dnOutput[]) {
+  Index row_tile = blockDim.y; // 8
+  Index subwarp_id = threadIdx.y;
+  Index stride = row_tile * gridDim.x; // 8 * (m/8)
+  Index row = blockIdx.x * row_tile + subwarp_id;
+  Index v_id = (blockIdx.y * blockDim.x) + threadIdx.x;
+  dnInput += v_id;
+  dnOutput += v_id;
+  E += v_id;
+  DType res = 0, val;
+  Index col;
+  for (; row < nr; row += stride) {
+    Index E_k_idx;
+    Index start = __ldg(rowPtr + row);
+    Index end = __ldg(rowPtr + row + 1);
+    for (Index p = start; p < end; p++) {
+      DType val_pre_red;
+      col = __ldg(colIdx + p);
+      val = __guard_load_default_one<DType>(values, p);
+      E_k_idx = __ldg(E + col * feature_size);
+      if (E_k_idx == row) {
+        val_pre_red = val * __ldg(dnInput + col * feature_size);
+      }
+      res += val_pre_red;
+
+      // res += val * __ldg(dnInput + col * feature_size);
+    }
+    dnOutput[row * feature_size] = res;
+  }
+}
+
 #endif

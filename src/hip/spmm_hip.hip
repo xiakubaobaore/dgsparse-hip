@@ -268,57 +268,53 @@ spmm_hip(torch::Tensor csrptr, torch::Tensor indices, torch::Tensor edge_val,
   });
 }
 
-// torch::Tensor spmm_cuda_with_mask(torch::Tensor csrptr, torch::Tensor indices,
-//                                   torch::Tensor edge_val, torch::Tensor in_feat,
-//                                   torch::Tensor E, bool has_value,
-//                                   int64_t algorithm, REDUCEOP reduce_op,
-//                                   COMPUTEOP compute_op) {
-//   in_feat = in_feat.contiguous();
-//   int v = csrptr.size(0) - 1;
-//   int Ndim_worker = in_feat.size(1);
-//   int f = Ndim_worker;
-//   int e = indices.size(0);
-//   auto devid = in_feat.device().index();
-//   auto options =
-//       torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA, devid);
+torch::Tensor spmm_hip_with_mask(torch::Tensor csrptr, torch::Tensor indices,
+                                  torch::Tensor edge_val, torch::Tensor in_feat,
+                                  torch::Tensor E, bool has_value) {
+  in_feat = in_feat.contiguous();
+  int v = csrptr.size(0) - 1;
+  int Ndim_worker = in_feat.size(1);
+  int f = Ndim_worker;
+  int e = indices.size(0);
+  auto devid = in_feat.device().index();
+  auto options =
+      torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA, devid);
 
-//   auto out_feat = torch::empty({v, f}, options);
+  auto out_feat = torch::empty({v, f}, options);
 
-//   if (algorithm == 0) {
-//     int Mdim_worker = csrptr.size(0) - 1;
-//     // int v = Mdim_worker;
-//     int Ndim_worker = in_feat.size(1);
-//     // int f = Ndim_worker;
-//     // int e = indices.size(0);
-//     int RefThreadPerBlock = 256;
-//     int Ndim_threadblock = CEIL(Ndim_worker, RefThreadPerBlock);
-//     int Ndim_thread_per_tb = min(Ndim_worker, RefThreadPerBlock);
-//     int Mdim_thread_per_tb = CEIL(RefThreadPerBlock, Ndim_thread_per_tb);
-//     int Mdim_threadblock = CEIL(Mdim_worker, Mdim_thread_per_tb);
+    int Mdim_worker = csrptr.size(0) - 1;
+    // int v = Mdim_worker;
+    // int Ndim_worker = in_feat.size(1);
+    // int f = Ndim_worker;
+    // int e = indices.size(0);
+    int RefThreadPerBlock = 256;
+    int Ndim_threadblock = CEIL(Ndim_worker, RefThreadPerBlock);
+    int Ndim_thread_per_tb = min(Ndim_worker, RefThreadPerBlock);
+    int Mdim_thread_per_tb = CEIL(RefThreadPerBlock, Ndim_thread_per_tb);
+    int Mdim_threadblock = CEIL(Mdim_worker, Mdim_thread_per_tb);
 
-//     dim3 gridDim(Mdim_threadblock, Ndim_threadblock, 1);
-//     dim3 blockDim(Ndim_thread_per_tb, Mdim_thread_per_tb, 1);
+    dim3 gridDim(Mdim_threadblock, Ndim_threadblock, 1);
+    dim3 blockDim(Ndim_thread_per_tb, Mdim_thread_per_tb, 1);
 
-//     // auto out_feat = torch::empty({v, f}, options);
+    // auto out_feat = torch::empty({v, f}, options);
 
-//     if (has_value)
-//       csrspmm_seqreduce_rowbalance_with_mask_kernel<<<gridDim, blockDim>>>(
-//           Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
-//           indices.data_ptr<int>(), edge_val.data_ptr<float>(),
-//           in_feat.data_ptr<float>(), E.data_ptr<int>(),
-//           out_feat.data_ptr<float>());
+    if (has_value)
+      csrspmm_seqreduce_rowbalance_with_mask_kernel<<<gridDim, blockDim>>>(
+          Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
+          indices.data_ptr<int>(), edge_val.data_ptr<float>(),
+          in_feat.data_ptr<float>(), E.data_ptr<int>(),
+          out_feat.data_ptr<float>());
 
-//     else
-//       csrspmm_seqreduce_rowbalance_with_mask_kernel<<<gridDim, blockDim>>>(
-//           Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
-//           indices.data_ptr<int>(), (float *)nullptr, in_feat.data_ptr<float>(),
-//           E.data_ptr<int>(), out_feat.data_ptr<float>());
-//   }
+    else
+      csrspmm_seqreduce_rowbalance_with_mask_kernel<<<gridDim, blockDim>>>(
+          Mdim_worker, Ndim_worker, csrptr.data_ptr<int>(),
+          indices.data_ptr<int>(), (float *)nullptr, in_feat.data_ptr<float>(),
+          E.data_ptr<int>(), out_feat.data_ptr<float>());
 
-//   return out_feat;
-// };
+  return out_feat;
+};
 
-torch::Tensor sddmm_cuda_csr(torch::Tensor rowptr, torch::Tensor colind,
+torch::Tensor sddmm_hip_csr(torch::Tensor rowptr, torch::Tensor colind,
                              torch::Tensor D1, torch::Tensor D2,
                              REDUCEOP reduce_op) {
   D1 = D1.contiguous();
@@ -347,6 +343,27 @@ torch::Tensor sddmm_cuda_csr(torch::Tensor rowptr, torch::Tensor colind,
               out.data_ptr<float>());
     });
   }
+  return out;
+}
+
+torch::Tensor sddmm_hip_csr_with_mask(torch::Tensor rowptr,
+                                       torch::Tensor colind, torch::Tensor D1,
+                                       torch::Tensor D2, torch::Tensor E) {
+  D1 = D1.contiguous();
+  D2 = D2.contiguous();
+  E = E.contiguous();
+  const auto m = D1.size(0);
+  const auto k = D1.size(1);
+  const auto nnz = colind.size(0);
+  auto devid = D1.device().index();
+  auto options =
+      torch::TensorOptions().dtype(torch::kFloat32).device(torch::kCUDA, devid);
+  auto out = torch::empty({1, nnz}, options);
+  sddmmCSR1Scale_with_mask<<<dim3(nnz / 16 + (nnz & 15), 1, 1),
+                             dim3(32, 4, 1)>>>(
+      m, k, nnz, rowptr.data_ptr<int>(), colind.data_ptr<int>(),
+      D1.data_ptr<float>(), D2.data_ptr<float>(), E.data_ptr<int>(),
+      out.data_ptr<float>());
   return out;
 }
 

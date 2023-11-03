@@ -6,7 +6,7 @@ import dgsparse.tensor
 from .tensor import SparseTensor
 from .storage import Storage
 from .ftransform import csr2csc
-from .spmm import spmm_sum
+from .spmm import spmm_sum, spmm_max, spmm_min, spmm_mean
 
 __version__ = '0.1'
 
@@ -20,4 +20,7 @@ for library in ['_spmm']:
         raise ImportError(f"Could not find module '{library}_hip' in "
                           f'{osp.dirname(__file__)}')
 
-__all__ = ['Storage', 'SparseTensor', 'csr2csc', 'spmm_sum']
+__all__ = [
+    'Storage', 'SparseTensor', 'csr2csc', 'spmm_sum', 'spmm_max', 'spmm_min',
+    'spmm_mean'
+]
