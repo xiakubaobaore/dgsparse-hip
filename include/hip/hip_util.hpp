@@ -34,12 +34,13 @@
 // hipDeviceProp_t props;
 // hipGetDeviceProperties(&props, 0);
 // const int WARP_SIZE = props.warpsize;
-#define WARP_SIZE 32
+#define WARP_SIZE 64
 
 #define SHFL_DOWN_REDUCE(v, temp_v, REDUCE, idx)                               \
   switch (REDUCE) {                                                            \
   case REDUCEOP::SUM:                                                          \
   case REDUCEOP::MEAN:                                                         \
+    v += __shfl_down(v, 32, WARP_SIZE);                                        \
     v += __shfl_down(v, 16, WARP_SIZE);                                        \
     v += __shfl_down(v, 8, WARP_SIZE);                                         \
     v += __shfl_down(v, 4, WARP_SIZE);                                         \
@@ -47,6 +48,11 @@
     v += __shfl_down(v, 1, WARP_SIZE);                                         \
     break;                                                                     \
   case REDUCEOP::MAX:                                                          \
+    temp_v = __shfl_down(temp_v, 32, WARP_SIZE);                               \
+    if (temp_v > v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 32, WARP_SIZE);                                   \
+    }                                                                          \
     temp_v = __shfl_down(temp_v, 16, WARP_SIZE);                               \
     if (temp_v > v) {                                                          \
       v = temp_v;                                                              \
@@ -74,6 +80,11 @@
     }                                                                          \
     break;                                                                     \
   case REDUCEOP::MIN:                                                          \
+    temp_v = __shfl_down(temp_v, 32, WARP_SIZE);                               \
+    if (temp_v < v) {                                                          \
+      v = temp_v;                                                              \
+      idx = __shfl_down(idx, 32, WARP_SIZE);                                   \
+    }                                                                          \
     temp_v = __shfl_down(temp_v, 16, WARP_SIZE);                               \
     if (temp_v < v) {                                                          \
       v = temp_v;                                                              \
@@ -107,23 +118,27 @@
 #define SEG_SHFL_SCAN(v, tmpv, segid, tmps)                                    \
   tmpv = __shfl_down(v, 1);                                                    \
   tmps = __shfl_down(segid, 1);                                                \
-  if (tmps == segid && lane_id < 31)                                           \
+  if (tmps == segid && lane_id < 63)                                           \
     v += tmpv;                                                                 \
   tmpv = __shfl_down(v, 2);                                                    \
   tmps = __shfl_down(segid, 2);                                                \
-  if (tmps == segid && lane_id < 30)                                           \
+  if (tmps == segid && lane_id < 62)                                           \
     v += tmpv;                                                                 \
   tmpv = __shfl_down(v, 4);                                                    \
   tmps = __shfl_down(segid, 4);                                                \
-  if (tmps == segid && lane_id < 28)                                           \
+  if (tmps == segid && lane_id < 60)                                           \
     v += tmpv;                                                                 \
   tmpv = __shfl_down(v, 8);                                                    \
   tmps = __shfl_down(segid, 8);                                                \
-  if (tmps == segid && lane_id < 24)                                           \
+  if (tmps == segid && lane_id < 56)                                           \
     v += tmpv;                                                                 \
   tmpv = __shfl_down(v, 16);                                                   \
   tmps = __shfl_down(segid, 16);                                               \
-  if (tmps == segid && lane_id < 16)                                           \
+  if (tmps == segid && lane_id < 48)                                           \
+    v += tmpv;                                                                 \
+  tmpv = __shfl_down(v, 32);                                                   \
+  tmps = __shfl_down(segid, 32);                                               \
+  if (tmps == segid && lane_id < 32)                                           \
     v += tmpv;
 
 template <typename T>

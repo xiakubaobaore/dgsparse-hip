@@ -180,12 +180,12 @@ csrspmm_parreduce_rowbalance_kernel(const Index nr, const Index feature_size,
                                     DType dnOutput[], Index E[]) {
   constexpr Index CoarsenFactor = sizeof(access_t) / sizeof(DType);
 
-  Index lane_id = (threadIdx.x & (32 - 1));
+  Index lane_id = (threadIdx.x & (64 - 1));
   Index stride = gridDim.x * blockDim.y;
   Index row = blockIdx.x * blockDim.y + threadIdx.y;
 
   // get the dense column offset
-  Index col_offset = blockIdx.y * 32 + (threadIdx.x >> 5) * CoarsenFactor;
+  Index col_offset = blockIdx.y * 64 + (threadIdx.x >> 6) * CoarsenFactor;
   const DType *B_panel = dnInput + col_offset;
   DType *C_panel = dnOutput + col_offset;
   Index ldB = feature_size;
@@ -213,7 +213,7 @@ csrspmm_parreduce_rowbalance_kernel(const Index nr, const Index feature_size,
     Index E_k_idx[CoarsenFactor] = {0};
     // DType res = init(REDUCE::Op);
 
-    for (Index jj = start + lane_id; jj < end; jj += 32) {
+    for (Index jj = start + lane_id; jj < end; jj += 64) {
       k = colIdx[jj];
       val = __guard_load_default_one<DType>(values, jj);
 
@@ -269,7 +269,7 @@ Ndim_Residue:
     DType val_pre_red;
     Index E_k_idx[CoarsenFactor] = {0};
 
-    for (Index jj = start + lane_id; jj < end; jj += 32) {
+    for (Index jj = start + lane_id; jj < end; jj += 64) {
       k = colIdx[jj];
       val = __guard_load_default_one<DType>(values, jj);
 
@@ -324,13 +324,13 @@ csrspmm_parreduce_nnzbalance_kernel(const Index nr, const Index feature_size,
   if (nnz < 0)
     nnz = rowPtr[nr];
 
-  Index lane_id = (threadIdx.x & (32 - 1));
+  Index lane_id = (threadIdx.x & (64 - 1));
   Index Nnzdim_warp_id = blockIdx.x * blockDim.y + threadIdx.y;
-  Index nz_start = Nnzdim_warp_id * 32;
-  Index stride = gridDim.x * (blockDim.y * 32);
+  Index nz_start = Nnzdim_warp_id * 64;
+  Index stride = gridDim.x * (blockDim.y * 64);
 
   // get the dense column offset
-  Index col_offset = blockIdx.y * 32 + (threadIdx.x >> 5) * CoarsenFactor;
+  Index col_offset = blockIdx.y * 64 + (threadIdx.x >> 6) * CoarsenFactor;
   const DType *B_panel = dnInput + col_offset;
   DType *C_panel = dnOutput + col_offset;
   Index ldB = feature_size;
@@ -368,7 +368,7 @@ csrspmm_parreduce_nnzbalance_kernel(const Index nr, const Index feature_size,
     }
 
     // reduction
-    Index row_intv = __shfl(row, (32 - 1)) - __shfl(row, 0);
+    Index row_intv = __shfl(row, (64 - 1)) - __shfl(row, 0);
     if (row_intv == 0) {
 // if all non-zeros in this warp belong to the same row, use a simple reduction
 #pragma unroll
@@ -428,7 +428,7 @@ Ndim_Residue:
     }
 
     // reduction
-    Index row_intv = __shfl(row, (32 - 1)) - __shfl(row, 0);
+    Index row_intv = __shfl(row, (64 - 1)) - __shfl(row, 0);
     if (row_intv == 0) {
 #pragma unroll
       for (int i = 0; i < CoarsenFactor; i++) {

@@ -59,6 +59,7 @@ bool check_result(float *C_ref, float *C, int num){
         {
             printf("Result verification failed at element %d!\nC_ref[%d] = %f, C[%d] = %f\n", i, i, C_ref[i], i, C[i]);
             flag = false;
+            break;
             // return false;
         }
     }
