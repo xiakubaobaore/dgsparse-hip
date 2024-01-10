@@ -125,7 +125,6 @@ def check_time(gc, stage='forward'):
 #     print(f'dgsparse_{gc.algorithm} {stage} time is: {dgsparse_time}')
 #     return dgsparse_time
 
-
 # def test_spmm_time(dataset, in_dim, device, reduce='sum', algorithm=0):
 #     print()
 #     print(
@@ -137,6 +136,7 @@ def check_time(gc, stage='forward'):
 #     else:
 #         raise ValueError
 #     return check_time(gc, stage='forward')
+
 
 def test_spmm_time(dataset, in_dim, device, reduce='sum'):
     print()
@@ -164,7 +164,6 @@ if __name__ == '__main__':
     for dataset in datasets:
         for in_dim in features_dim:
             test_spmm_time(dataset, in_dim, device, reduce='sum')
-
 
 # if __name__ == '__main__':
 #     device = 'cuda' if torch.cuda.is_available() else 'cpu'
